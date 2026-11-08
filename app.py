@@ -251,4 +251,4 @@ st_folium(m, width="100%", height=520)
 
 st.markdown("---")
 st.caption("EcoRastro SaaS v2.4 | Prototipo de Validación B2G | Integración de API Google Earth Engine & Sentinel-2")
-```eof
+
