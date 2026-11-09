@@ -120,6 +120,8 @@ m = folium.Map(
 
 tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
 
+tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
+
 if tile_url:
     folium.TileLayer(
         tiles=tile_url,
@@ -134,4 +136,20 @@ if tile_url:
     col2.metric("Resolución Espacial", "10 metros / píxel")
     col3.metric(f"Promedio Real {capa_seleccionada.split()[0]}", f"{promedio_val:.3f}")
 else:
+    if not ee_status:
+        st.sidebar.warning("⚠️ Modo Demostración Activo.")
+    
+    folium.Polygon(
+        locations=[[lat, lng] for lng, lat in coordenadas_parque],
+        color="#10b981" if "NDVI" in capa_seleccionada else "#38bdf8",
+        fill=True,
+        fill_opacity=0.3,
+        popup="Polígono Objetivo: Parque O'Higgins"
+    ).add_to(m)
+
+st_folium(m, width="100%", height=550)
+
+st.markdown("---")
+st.caption("EcoRastro B2G | Sistema de Apoyo a la Toma de Decisiones para la Estrategia de Corredores Verdes (GORE / Municipalidad de Santiago).")
+
     
