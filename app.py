@@ -1,254 +1,156 @@
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-import numpy as np
-import random
+import ee
+import json
 
 # ---------------------------------------------------------
-# 1. Configuración de la página & Estilos CSS Personalizados
+# 1. Configuración de Página
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="EcoRastro | Inteligencia Geoespacial Urbana",
+    page_title="EcoRastro | Planificación de Corredores Verdes",
     page_icon="🛰️",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Estilos CSS profesionales para mejorar la apariencia por defecto de Streamlit
+st.title("🛰️ EcoRastro: Inteligencia Geoespacial & Corredores Verdes")
 st.markdown("""
-    <style>
-    /* Estilo del contenedor principal */
-    .main {
-        background-color: #0f172a;
-        color: #f8fafc;
-    }
-    
-    /* Header estilizado */
-    .header-box {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        padding: 24px;
-        border-radius: 12px;
-        border: 1px solid #334155;
-        margin-bottom: 24px;
-    }
-    
-    /* Tarjetas de Métricas */
-    .metric-card {
-        background-color: #1e293b;
-        padding: 16px;
-        border-radius: 10px;
-        border-left: 4px solid #10b981;
-        margin-bottom: 12px;
-        border-top: 1px solid #334155;
-        border-right: 1px solid #334155;
-        border-bottom: 1px solid #334155;
-    }
-    .metric-card.alert {
-        border-left-color: #f43f5e;
-    }
-    .metric-card.info {
-        border-left-color: #0284c7;
-    }
-    .metric-title {
-        font-size: 13px;
-        color: #94a3b8;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .metric-value {
-        font-size: 24px;
-        font-weight: 700;
-        color: #f8fafc;
-        margin-top: 4px;
-    }
-    .metric-sub {
-        font-size: 12px;
-        color: #cbd5e1;
-        margin-top: 4px;
-    }
-    
-    /* Badge del Estado Satelital */
-    .status-badge {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 9999px;
-        font-size: 12px;
-        font-weight: 600;
-        background-color: rgba(16, 185, 129, 0.1);
-        color: #10b981;
-        border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-    </style>
-""", unsafe_allow_html=True)
+Plataforma B2G de apoyo a la toma de decisiones para la **Municipalidad de Santiago y el GORE**. 
+Monitoreo satelital en vivo (*Sentinel-2 vía Google Earth Engine*) para la identificación de islas de calor y planificación de infraestructura verde urbana.
+""")
 
 # ---------------------------------------------------------
-# 2. Encabezado / Hero
+# 2. Inicialización de Google Earth Engine (Real)
 # ---------------------------------------------------------
-st.markdown("""
-    <div class="header-box">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <span class="status-badge">🛰️ CONEXIÓN SENTINEL-2 ACTIVE</span>
-                <h1 style="margin: 8px 0 4px 0; font-size: 30px; font-weight: 800; color: #ffffff;">
-                    EcoRastro — Monitoreo Geoespacial Parque O'Higgins
-                </h1>
-                <p style="color: #94a3b8; margin: 0; font-size: 15px;">
-                    Plataforma SaaS de Inteligencia Territorial para Municipalidades y Gestión de Áreas Verdes
-                </p>
-            </div>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
+@st.cache_resource
+def init_earth_engine():
+    try:
+        # Autenticación mediante credenciales del proyecto de Google Cloud
+        # Reemplaza 'tu-proyecto-gee-id' por tu ID de proyecto de Google Earth Engine
+        ee.Initialize(project='tu-proyecto-gee-id')
+        return True
+    except Exception as e:
+        return str(e)
+
+ee_status = init_earth_engine()
 
 # ---------------------------------------------------------
-# 3. Sidebar (Controles e Indicadores)
+# 3. Definición Geográfica Real del Parque O'Higgins
 # ---------------------------------------------------------
-st.sidebar.markdown("### ⚙️ Configuración del Análisis")
+# Polígono preciso del Parque O'Higgins (Latitud/Longitud real)
+coordenadas_parque = [
+    [-70.6625, -33.4578],
+    [-70.6552, -33.4578],
+    [-70.6552, -33.4672],
+    [-70.6625, -33.4672],
+    [-70.6625, -33.4578]
+]
 
-capa_activa = st.sidebar.radio(
-    "Selecciona la capa multiespectral:",
-    ("Índice de Salud Vegetal (NDVI)", "Estrés Hídrico (NDWI)")
-)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📌 Diagnóstico del Parque")
-
-if "NDVI" in capa_activa:
-    st.sidebar.markdown("""
-        <div class="metric-card">
-            <div class="metric-title">Salud General (NDVI)</div>
-            <div class="metric-value">0.74 (Óptimo)</div>
-            <div class="metric-sub">82% de cobertura con vegetación densa activa.</div>
-        </div>
-    """, unsafe_allow_html=True)
-else:
-    st.sidebar.markdown("""
-        <div class="metric-card alert">
-            <div class="metric-title">Estrés Hídrico (NDWI)</div>
-            <div class="metric-value">Alerta Sector Norte</div>
-            <div class="metric-sub">Zona Fantasilandia requiere riego focalizado urgente.</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-st.sidebar.markdown("""
-    <div class="metric-card info">
-        <div class="metric-title">Frecuencia de Actualización</div>
-        <div class="metric-value">Cada 5 Días</div>
-        <div class="metric-sub">Próximo paso orbital: Sentinel-2B</div>
-    </div>
-""", unsafe_allow_html=True)
-
-st.sidebar.markdown("---")
-st.sidebar.info("💡 **Diferenciador Clave:** Sustituye catastros manuales estáticos por análisis continuo sin costo de personal en terreno.")
+parque_geometry = ee.Geometry.Polygon(coordenadas_parque)
 
 # ---------------------------------------------------------
-# 4. Layout Principal (Métricas Superiores + Mapa)
+# 4. Procesamiento de Imágenes Satelitales en Tiempo Real
 # ---------------------------------------------------------
+def obtener_capa_satelital_real(capa_tipo):
+    if ee_status is not True:
+        return None, None
 
-col1, col2, col3, col4 = st.columns(4)
+    # Consulta a la colección multiespectral de Sentinel-2 (Harmonized)
+    coleccion = (
+        ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+        .filterBounds(parque_geometry)
+        .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 15))
+        .sort("system:time_start", False)  # Tomar la más reciente disponible
+    )
 
-with col1:
-    st.markdown("""
-        <div class="metric-card">
-            <div class="metric-title">Superficie Monitoreada</div>
-            <div class="metric-value">79.8 Ha</div>
-            <div class="metric-sub">Parque O'Higgins completo</div>
-        </div>
-    """, unsafe_allow_html=True)
+    imagen = coleccion.first()
 
-with col2:
-    st.markdown("""
-        <div class="metric-card">
-            <div class="metric-title">Resolución Espacial</div>
-            <div class="metric-value">10x10 m</div>
-            <div class="metric-sub">Malla de píxeles Sentinel-2</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col3:
-    st.markdown("""
-        <div class="metric-card">
-            <div class="metric-title">Índice Hídrico Global</div>
-            <div class="metric-value">-0.12</div>
-            <div class="metric-sub">Riesgo moderado por temporada</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col4:
-    st.markdown("""
-        <div class="metric-card alert">
-            <div class="metric-title">Zonas de Atención</div>
-            <div class="metric-value">2 Sectores</div>
-            <div class="metric-sub">Prioridad alta de poda/riego</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# 5. Generación del Mapa Satelital Mejorado
-# ---------------------------------------------------------
-st.markdown("### 🗺️ Visor de Análisis Geoespacial en Tiempo Real")
-
-# Crear el Mapa base con estilo oscuro satelital
-m = folium.Map(
-    location=[-33.4620, -70.6600], 
-    zoom_start=15, 
-    tiles="CartoDB dark_matter",
-    control_scale=True
-)
-
-# Límites del parque para la malla
-lat_start, lat_end = -33.4580, -33.4670
-lng_start, lng_end = -70.6620, -70.6555
-paso = 0.00035 # Píxel más fino (~30 metros)
-
-np.random.seed(42) # Mantener consistencia visual
-
-for lat in np.arange(lat_end, lat_start, paso):
-    for lng in np.arange(lng_start, lng_end, paso):
+    if capa_tipo == "NDVI (Salud Vegetal)":
+        # Cálculo: (B8 - B4) / (B8 + B4)
+        ndvi = imagen.normalizedDifference(["B8", "B4"]).rename("NDVI")
+        corte = ndvi.clip(parque_geometry)
         
-        # Excluir la Elipse central y estacionamientos
-        if -33.4642 < lat < -33.4608 and -70.6608 < lng < -70.6582:
-            continue
-            
-        if "NDVI" in capa_activa:
-            # Paleta de verdes/amarillos para salud vegetal
-            val = random.random()
-            if val > 0.4:
-                color = "#10b981" # Verde sano
-                opacity = 0.65
-            elif val > 0.2:
-                color = "#84cc16" # Verde claro
-                opacity = 0.55
-            else:
-                color = "#eab308" # Estrés amarillo
-                opacity = 0.6
-        else:
-            # Paleta de azul vs rojo/naranja para estrés hídrico
-            if lat > -33.4615:
-                # Sector Norte (Fantasilandia) -> Estrés hídrico
-                color = "#f43f5e" if random.random() > 0.3 else "#fb923c"
-                opacity = 0.75
-            else:
-                # Sector Sur -> Regado
-                color = "#0284c7" if random.random() > 0.2 else "#38bdf8"
-                opacity = 0.55
+        vis_params = {
+            "min": 0.0,
+            "max": 0.8,
+            "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#d9ef8b", "#a6d96a", "#1a9850"]
+        }
+        
+        map_id = corte.getMapId(vis_params)
+        
+        # Calcular estadística promedio real
+        mean_stat = corte.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=parque_geometry,
+            scale=10
+        ).getInfo()
+        
+        return map_id["tile_fetcher"].url_format, mean_stat.get("NDVI", 0)
 
-        # Dibujar píxeles sin bordes duros
-        folium.Rectangle(
-            bounds=[[lat, lng], [lat + paso, lng + paso]],
-            color=color,
-            fill=True,
-            fill_color=color,
-            fill_opacity=opacity,
-            weight=0
+    else:
+        # NDWI (Estrés Hídrico): (B3 - B8) / (B3 + B8)
+        ndwi = imagen.normalizedDifference(["B3", "B8"]).rename("NDWI")
+        corte = ndwi.clip(parque_geometry)
+        
+        vis_params = {
+            "min": -0.5,
+            "max": 0.2,
+            "palette": ["#d73027", "#f46d43", "#fee08b", "#e0f3f8", "#91bfdb", "#4575b4"]
+        }
+        
+        map_id = corte.getMapId(vis_params)
+        
+        mean_stat = corte.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=parque_geometry,
+            scale=10
+        ).getInfo()
+        
+        return map_id["tile_fetcher"].url_format, mean_stat.get("NDWI", 0)
+
+# ---------------------------------------------------------
+# 5. Interfaz de Usuario & Dashboard
+# ---------------------------------------------------------
+st.sidebar.header("⚙️ Filtros Satelitales")
+capa_seleccionada = st.sidebar.radio(
+    "Selecciona el indicador multiespectral:",
+    ["NDVI (Salud Vegetal)", "NDWI (Estrés Hídrico)"]
+)
+
+# Renderizar Mapa Base
+m = folium.Map(
+    location=[-33.4625, -70.6588],
+    zoom_start=15,
+    tiles="CartoDB dark_matter"
+)
+
+if ee_status is True:
+    tile_url, promedio_val = obtener_capa_satelital_real(capa_seleccionada)
+    
+    if tile_url:
+        # Superponer la capa de teselas en vivo generada por Google Earth Engine
+        folium.TileLayer(
+            tiles=tile_url,
+            attr="Google Earth Engine / Copernicus Sentinel-2",
+            name=capa_seleccionada,
+            overlay=True,
+            control=True
         ).add_to(m)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Fuente de Datos", "Sentinel-2 (ESA)")
+        with col2:
+            st.metric("Resolución Espacial", "10 metros / píxel")
+        with col3:
+            st.metric(f"Promedio Real {capa_seleccionada.split()[0]}", f"{promedio_val:.3f}")
+    else:
+        st.warning("No se pudieron cargar las imágenes de la última pasada orbital.")
+else:
+    st.info("💡 **Modo Demostración Activo:** Para habilitar las consultas automatizadas a Earth Engine en producción, configure la variable de credenciales del proyecto de Google Cloud.")
 
-# Leyenda en el mapa
-st_folium(m, width="100%", height=520)
+# Mostrar Mapa
+st_folium(m, width="100%", height=550)
 
 st.markdown("---")
-st.caption("EcoRastro SaaS v2.4 | Prototipo de Validación B2G | Integración de API Google Earth Engine & Sentinel-2")
-
+st.caption("EcoRastro B2G | Integración oficial con API de Google Earth Engine para la estrategia de Corredores Verdes en la Región Metropolitana.")
