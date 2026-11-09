@@ -2,6 +2,7 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import ee
+import json
 
 # ---------------------------------------------------------
 # 1. Configuración de Página
@@ -15,7 +16,7 @@ st.set_page_config(
 st.title("🛰️ EcoRastro: Inteligencia Geoespacial & Corredores Verdes")
 st.markdown("""
 Plataforma B2G de apoyo a la toma de decisiones para la **Municipalidad de Santiago y el GORE**. 
-Monitoreo satelital para la identificación de islas de calor y planificación de infraestructura verde urbana.
+Monitoreo satelital (*Sentinel-2 vía Google Earth Engine*) para la identificación de islas de calor y planificación de infraestructura verde urbana.
 """)
 
 # ---------------------------------------------------------
@@ -24,10 +25,25 @@ Monitoreo satelital para la identificación de islas de calor y planificación d
 @st.cache_resource
 def init_earth_engine():
     try:
-        # Reemplaza 'tu-proyecto-gee-id' por tu ID real de proyecto en Google Cloud cuando lo tengas.
-        ee.Initialize(project='tu-proyecto-gee-id')
-        return True
+        if "GCP_SERVICE_ACCOUNT" in st.secrets:
+            secret_val = st.secrets["GCP_SERVICE_ACCOUNT"]
+            if isinstance(secret_val, str):
+                service_account_info = json.loads(secret_val)
+            else:
+                service_account_info = dict(secret_val)
+            
+            client_email = service_account_info.get("client_email")
+            private_key = service_account_info.get("private_key")
+            project_id = service_account_info.get("project_id")
+            
+            credentials = ee.ServiceAccountCredentials(client_email, key_data=private_key)
+            ee.Initialize(credentials, project=project_id)
+            return True
+        else:
+            ee.Initialize()
+            return True
     except Exception as e:
+        st.sidebar.error(f"⚠️ Error GEE: {str(e)}")
         return False
 
 ee_status = init_earth_engine()
@@ -42,7 +58,7 @@ coordenadas_parque = [
 ]
 
 # ---------------------------------------------------------
-# 3. Función de Obtención de Capas
+# 3. Función de Obtención de Capas Satelitales
 # ---------------------------------------------------------
 def obtener_capa_satelital(capa_tipo):
     if not ee_status:
@@ -82,11 +98,12 @@ def obtener_capa_satelital(capa_tipo):
         val = list(mean_stat.values())[0] if mean_stat else 0.0
         return map_id["tile_fetcher"].url_format, val
 
-    except Exception:
+    except Exception as e:
+        st.sidebar.error(f"⚠️ Error procesando capa: {str(e)}")
         return None, 0.0
 
 # ---------------------------------------------------------
-# 4. Interfaz & Renderizado
+# 4. Interfaz de Usuario & Mapa
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ Filtros Satelitales")
 capa_seleccionada = st.sidebar.radio(
@@ -94,11 +111,11 @@ capa_seleccionada = st.sidebar.radio(
     ["NDVI (Salud Vegetal)", "NDWI (Estrés Hídrico)"]
 )
 
-# Mapa Base
+# Mapa Base OpenStreetMap (Limpio de errores de API key)
 m = folium.Map(
     location=[-33.4625, -70.6588],
     zoom_start=15,
-    tiles="CartoDB dark_matter"
+    tiles="OpenStreetMap"
 )
 
 tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
@@ -117,19 +134,4 @@ if tile_url:
     col2.metric("Resolución Espacial", "10 metros / píxel")
     col3.metric(f"Promedio Real {capa_seleccionada.split()[0]}", f"{promedio_val:.3f}")
 else:
-    # Mensaje informativo elegante sin romper la app
-    st.sidebar.warning("⚠️ Modo Demostración Activo: API de Google Earth Engine pendiente de credenciales en la nube.")
     
-    # Dibujar el polígono real del Parque O'Higgins como referencia espacial
-    folium.Polygon(
-        locations=[[lat, lng] for lng, lat in coordenadas_parque],
-        color="#10b981" if "NDVI" in capa_seleccionada else "#38bdf8",
-        fill=True,
-        fill_opacity=0.3,
-        popup="Polígono Objetivo: Parque O'Higgins"
-    ).add_to(m)
-
-st_folium(m, width="100%", height=550)
-
-st.markdown("---")
-st.caption("EcoRastro B2G | Sistema de Apoyo a la Toma de Decisiones para la Estrategia de Corredores Verdes (GORE / Municipalidad de Santiago).")
