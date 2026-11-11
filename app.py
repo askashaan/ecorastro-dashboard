@@ -57,8 +57,17 @@ coordenadas_parque = [
     [-70.6625, -33.4578]
 ]
 
+# Coordenadas ampliadas para cubrir el Parque O'Higgins y bordes viales
+coordenadas_parque = [
+    [-70.6678, -33.4530],
+    [-70.6525, -33.4530],
+    [-70.6525, -33.4715],
+    [-70.6678, -33.4715],
+    [-70.6678, -33.4530]
+]
+
 # ---------------------------------------------------------
-# 3. Función de Obtención de Capas Satelitales
+# 3. Función de Obtención de Capas Satelitales (Mejorada)
 # ---------------------------------------------------------
 def obtener_capa_satelital(capa_tipo):
     if not ee_status:
@@ -72,21 +81,29 @@ def obtener_capa_satelital(capa_tipo):
             .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 15))
             .sort("system:time_start", False)
         )
-
         imagen = coleccion.first()
+        promedio_val = 0.0
 
-        if "NDVI" in capa_tipo:
+        if "Normal (RGB)" in capa_tipo:
+            # Color verdadero (Bandas Roja, Verde, Azul)
+            corte = imagen.select(["B4", "B3", "B2"]).clip(parque_geometry)
+            vis_params = {"min": 0, "max": 2500, "gamma": 1.2}
+            return corte.getMapId(vis_params)["tile_fetcher"].url_format, 0.0
+
+        elif "NDVI" in capa_tipo:
+            # Salud Vegetal (Rojo y NIR)
             corte = imagen.normalizedDifference(["B8", "B4"]).rename("NDVI").clip(parque_geometry)
-            vis_params = {
-                "min": 0.0, "max": 0.8,
-                "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#d9ef8b", "#a6d96a", "#1a9850"]
-            }
-        else:
-            corte = imagen.normalizedDifference(["B3", "B8"]).rename("NDWI").clip(parque_geometry)
-            vis_params = {
-                "min": -0.5, "max": 0.2,
-                "palette": ["#d73027", "#f46d43", "#fee08b", "#e0f3f8", "#91bfdb", "#4575b4"]
-            }
+            vis_params = {"min": 0.0, "max": 0.8, "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#d9ef8b", "#a6d96a", "#1a9850"]}
+        
+        elif "NDMI" in capa_tipo:
+            # Estrés Hídrico en vegetación (NIR y SWIR)
+            corte = imagen.normalizedDifference(["B8A", "B11"]).rename("NDMI").clip(parque_geometry)
+            vis_params = {"min": -0.2, "max": 0.4, "palette": ["#d73027", "#fc8d59", "#fee08b", "#e0f3f8", "#91bfdb", "#4575b4"]}
+            
+        elif "NDBI" in capa_tipo:
+            # Zonas Construidas / Asfalto (SWIR y NIR)
+            corte = imagen.normalizedDifference(["B11", "B8"]).rename("NDBI").clip(parque_geometry)
+            vis_params = {"min": -0.2, "max": 0.3, "palette": ["#1a9850", "#91cf60", "#d9ef8b", "#fee08b", "#fc8d59", "#d73027"]}
 
         map_id = corte.getMapId(vis_params)
         mean_stat = corte.reduceRegion(
@@ -95,8 +112,10 @@ def obtener_capa_satelital(capa_tipo):
             scale=10
         ).getInfo()
 
-        val = list(mean_stat.values())[0] if mean_stat else 0.0
-        return map_id["tile_fetcher"].url_format, val
+        if mean_stat:
+            promedio_val = list(mean_stat.values())[0]
+            
+        return map_id["tile_fetcher"].url_format, promedio_val
 
     except Exception as e:
         st.sidebar.error(f"⚠️ Error procesando capa: {str(e)}")
@@ -107,8 +126,13 @@ def obtener_capa_satelital(capa_tipo):
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ Filtros Satelitales")
 capa_seleccionada = st.sidebar.radio(
-    "Selecciona el indicador multiespectral:",
-    ["NDVI (Salud Vegetal)", "NDWI (Estrés Hídrico)"]
+    "Selecciona la capa de análisis:",
+    [
+        "📸 Mapa Normal (RGB)", 
+        "🌳 NDVI (Salud Vegetal)", 
+        "💧 NDMI (Estrés Hídrico/Humedad)", 
+        "🏢 NDBI (Cemento y Asfalto)"
+    ]
 )
 
 # Mapa Base OpenStreetMap (Limpio de errores de API key)
