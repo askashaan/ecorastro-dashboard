@@ -238,3 +238,41 @@ if map_data and map_data.get("last_clicked"):
     st.success(f"📍 Coordenada objetivo para la cuadrilla: `{lat:.5f}, {lng:.5f}`")
     gmaps_url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}&travelmode=walking"
     st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:inline-block; padding:10px 20px; background-color:#e76f51; color:white; font-weight:700; border-radius:10px; text-decoration:none;">🚶‍♂️ Ruta de Terreno en Google Maps</a>', unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# GUÍA TÉCNICA E INTERPRETACIÓN DE ÍNDICES (Diccionario B2G)
+# ---------------------------------------------------------
+st.markdown("---")
+with st.expander("📖 Guía de Interpretación de Capas e Índices Satelitales (Haz clic para desplegar)", expanded=True):
+    col_exp1, col_exp2 = st.columns(2)
+    
+    with col_exp1:
+        st.markdown("""
+        ### 🌳 NDVI (Índice de Salud Vegetal)
+        Mide el vigor, la densidad foliar y la capacidad de fotosíntesis de la biomasa urbana.
+        * 🔴 **Rojo / Naranja:** Tierra seca, suelo desnudo o vegetación muerta.
+        * 🟡 **Amarillo:** Pasto en mal estado o vegetación muy rala.
+        * 🟢 **Verde Oscuro:** Árboles frondosos y pasto muy sano.
+        
+        ---
+        
+        ### 🏢 NDBI (Zonas Construidas / Superficies Impermeables)
+        Identifica la densidad de infraestructura que retiene radiación solar.
+        * 🟢 **Verde:** Cobertura natural (sin asfalto/hormigón).
+        * 🟡 **Amarillo:** Zonas mixtas o suelo compactado.
+        * 🔴 **Rojo Oscuro:** Alta acumulación de asfalto y techos (Focos de Islas de Calor).
+        """)
+        
+    with col_exp2:
+        st.markdown("""
+        ### 💧 NDMI (Índice de Estrés Hídrico)
+        *Algoritmo inteligente: Aisla el cemento y analiza **únicamente la vegetación viva**.*
+        * 🔴 **Rojo / Naranja:** Plantas con **fuerte déficit de agua** (Requieren riego priorizado urgente).
+        * 🟡 **Amarillo / Celeste claro:** Humedad foliar en niveles aceptables.
+        * 🔵 **Azul Oscuro:** Árboles con **excelente reserva de agua** e hidratación óptima.
+        
+        ---
+        
+        ### 📸 Foto Satelital Normal (RGB)
+        Imagen en color verdadero capturada directamente por las bandas ópticas de **Copernicus Sentinel-2** a 10 metros de resolución espacial.
+        """)
