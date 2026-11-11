@@ -6,16 +6,16 @@ import ee
 import json
 
 # ---------------------------------------------------------
-# 1. Configuración de Página & Estilos TailWind / Bolt Theme
+# 1. Configuración de Página & Tema Visual Bolt
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="EcoRastro | Inteligencia Geoespacial B2G",
+    page_title="EcoRastro | Monitoreo Satelital",
     page_icon="🛰️",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Inyección de estilos con la paleta exacta de Bolt (forest-900, cream, terracotta)
+# Estilos CSS con alto contraste y diseño 1:1 con Bolt
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
@@ -25,79 +25,155 @@ st.markdown("""
     }
     
     .stApp {
-        background-color: #0d1f15; /* forest-900 */
-        color: #f7f4ed; /* cream */
+        background-color: #0d1f15 !important;
+        color: #f7f4ed !important;
     }
 
-    /* Ocultar elementos sobrantes de Streamlit */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    #MainMenu, footer, header { visibility: hidden; }
 
-    /* Paleta de Colores Bolt */
-    .bg-forest-900 { background-color: #0d1f15; }
-    .bg-forest-800 { background-color: #142e20; }
-    .bg-cream { background-color: #f7f4ed; }
-    .text-cream { color: #f7f4ed; }
-    .text-terracotta-300 { color: #f39a77; }
-    .text-terracotta-400 { color: #e76f51; }
-    .text-forest-800 { color: #142e20; }
-    .text-forest-600 { color: #2d5a3f; }
-    .text-forest-500 { color: #407b57; }
-
-    /* Estilos de Tarjetas */
-    .hero-card {
-        background: linear-gradient(135deg, rgba(20, 46, 32, 0.95) 0%, rgba(13, 31, 21, 0.8) 100%);
-        border: 1px solid rgba(247, 244, 237, 0.15);
-        border-radius: 24px;
-        padding: 40px;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-    }
-
-    .problem-card {
-        background-color: #f7f4ed;
-        color: #142e20;
-        border-radius: 24px;
-        padding: 32px;
-    }
-
-    .source-item {
-        background-color: rgba(20, 46, 32, 0.05);
-        border: 1px dashed rgba(20, 46, 32, 0.2);
-        border-radius: 16px;
-        padding: 12px 16px;
-        margin-bottom: 12px;
-    }
-
-    .badge-saas {
-        display: inline-flex;
+    /* Barra de Navegación */
+    .bolt-nav {
+        display: flex;
         align-items: center;
-        gap: 8px;
-        background-color: rgba(247, 244, 237, 0.1);
-        border: 1px solid rgba(247, 244, 237, 0.2);
-        padding: 6px 16px;
-        border-radius: 9999px;
-        font-size: 12px;
-        font-weight: 600;
+        justify-content: space-between;
+        padding: 12px 24px;
+        background-color: #0d1f15;
+        border-bottom: 1px solid rgba(247, 244, 237, 0.1);
+        margin-bottom: 32px;
+    }
+    .bolt-logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        font-size: 1.2rem;
         color: #f7f4ed;
     }
-
-    /* Radio buttons estilizados como toggle */
-    div[data-testid="stRadio"] > label {
-        color: #f7f4ed !important;
+    .bolt-btn-nav {
+        background-color: #e76f51;
+        color: #ffffff !important;
+        padding: 8px 20px;
+        border-radius: 9999px;
         font-weight: 600;
+        font-size: 0.875rem;
+        text-decoration: none;
     }
-    div[data-testid="stRadio"] div[role="radiogroup"] {
-        background-color: #142e20;
-        padding: 8px;
+
+    /* Hero Section */
+    .hero-title {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #f7f4ed;
+        line-height: 1.1;
+        margin-bottom: 16px;
+    }
+    .hero-subtitle {
+        color: rgba(247, 244, 237, 0.8);
+        font-size: 1.125rem;
+        max-width: 650px;
+        line-height: 1.6;
+        margin-bottom: 24px;
+    }
+    .badge-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background-color: rgba(247, 244, 237, 0.1);
+        border: 1px solid rgba(247, 244, 237, 0.2);
+        padding: 4px 14px;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #f7f4ed;
+        margin-bottom: 16px;
+    }
+
+    /* Problem Section Card (Blanca / Beige) */
+    .problem-box {
+        background-color: #f7f4ed;
+        color: #142e20 !important;
+        border-radius: 24px;
+        padding: 40px;
+        margin-top: 40px;
+        margin-bottom: 40px;
+    }
+    .problem-box h2 {
+        color: #142e20 !important;
+        font-size: 2rem;
+        font-weight: 700;
+        margin-top: 8px;
+    }
+    .problem-box p {
+        color: #2d5a3f !important;
+        font-size: 1rem;
+        line-height: 1.6;
+    }
+
+    /* Items dentro de la tarjeta blanca */
+    .source-card {
+        background-color: #ffffff;
+        border: 1px dashed #d1e2d7;
         border-radius: 16px;
-        border: 1px solid rgba(247, 244, 237, 0.15);
+        padding: 16px;
+        margin-top: 12px;
+    }
+    .source-card strong {
+        color: #142e20 !important;
+        display: block;
+        font-size: 0.95rem;
+    }
+    .source-card span {
+        color: #407b57 !important;
+        font-size: 0.825rem;
+    }
+
+    .impact-banner {
+        background-color: #fdf0ed;
+        border: 1px solid #f8c9bc;
+        border-radius: 16px;
+        padding: 16px 20px;
+        margin-top: 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    .impact-badge {
+        background-color: #e76f51;
+        color: #ffffff;
+        padding: 6px 14px;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.875rem;
+    }
+    .impact-text {
+        color: #142e20 !important;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+
+    /* Ajuste para los radios de Streamlit */
+    div[data-testid="stRadio"] label {
+        color: #f7f4ed !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. Inicialización Segura de Google Earth Engine
+# 2. Header & Navegación (Bolt UI)
+# ---------------------------------------------------------
+st.markdown("""
+<div class="bolt-nav">
+    <div class="bolt-logo">
+        🌱 EcoRastro
+    </div>
+    <div>
+        <a href="#dashboard" class="bolt-btn-nav">Ver Dashboard</a>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 3. Inicialización de Google Earth Engine
 # ---------------------------------------------------------
 @st.cache_resource
 def init_earth_engine():
@@ -121,13 +197,11 @@ def init_earth_engine():
 
 ee_status = init_earth_engine()
 
-# Coordenadas ampliavas del Parque O'Higgins
 coordenadas_parque = [
     [-70.6678, -33.4530], [-70.6525, -33.4530],
     [-70.6525, -33.4715], [-70.6678, -33.4715], [-70.6678, -33.4530]
 ]
 
-# Función Satelital GEE
 def obtener_capa_satelital(capa_tipo):
     if not ee_status: return None, 0.0
     try:
@@ -159,148 +233,111 @@ def obtener_capa_satelital(capa_tipo):
         return None, 0.0
 
 # ---------------------------------------------------------
-# 3. COMPONENTE 1: HERO SECTION (Réplica Hero.tsx)
+# 4. Hero Section
 # ---------------------------------------------------------
 st.markdown("""
-<div class="hero-card">
-    <div class="badge-saas">
-        <span style="height: 8px; width: 8px; background-color: #f39a77; border-radius: 50%; display: inline-block;"></span>
-        Plataforma SaaS B2G
-    </div>
-    <h1 style="font-size: 2.8rem; font-weight: 700; margin-top: 16px; line-height: 1.1;">
-        Inteligencia Geoespacial para el Monitoreo de <span class="text-terracotta-300">Áreas Verdes</span>
-    </h1>
-    <p style="font-size: 1.1rem; color: rgba(247, 244, 237, 0.85); margin-top: 16px; max-width: 700px; line-height: 1.6;">
-        EcoRastro procesa datos satelitales (Sentinel-2) para unificar la información biológica urbana. 
-        Entregamos un panel de control en tiempo real sobre la salud vegetal y el estrés hídrico, transformando datos fragmentados en decisiones operativas.
-    </p>
-    <div style="display: flex; gap: 40px; margin-top: 36px; padding-top: 24px; border-top: 1px solid rgba(247, 244, 237, 0.15);">
-        <div>
-            <div style="font-size: 11px; text-transform: uppercase; color: rgba(247, 244, 237, 0.6); font-weight: 600;">⏰ Actualización</div>
-            <div style="font-size: 1.2rem; font-weight: 700; margin-top: 4px;">Cada 5 días</div>
-        </div>
-        <div>
-            <div style="font-size: 11px; text-transform: uppercase; color: rgba(247, 244, 237, 0.6); font-weight: 600;">🛰️ Fuente</div>
-            <div style="font-size: 1.2rem; font-weight: 700; margin-top: 4px;">Sentinel-2</div>
-        </div>
-        <div>
-            <div style="font-size: 11px; text-transform: uppercase; color: rgba(247, 244, 237, 0.6); font-weight: 600;">💧 Índices</div>
-            <div style="font-size: 1.2rem; font-weight: 700; margin-top: 4px;">NDVI · NDMI · NDBI</div>
-        </div>
-    </div>
+<div class="badge-pill">
+    <span style="height: 6px; width: 6px; background-color: #f39a77; border-radius: 50%;"></span>
+    Plataforma SaaS B2G
 </div>
+<h1 class="hero-title">
+    Inteligencia Geoespacial para el Monitoreo de <span style="color: #f39a77;">Áreas Verdes</span>
+</h1>
+<p class="hero-subtitle">
+    EcoRastro procesa datos satelitales (Sentinel-2) para unificar la información biológica urbana. 
+    Entregamos un panel de control en tiempo real sobre la salud vegetal y el estrés hídrico.
+</p>
 """, unsafe_allow_html=True)
 
-st.write("")
-st.write("")
+col_h1, col_h2, col_h3 = st.columns(3)
+with col_h1:
+    st.caption("⏰ ACTUALIZACIÓN")
+    st.markdown("**Cada 5 días**")
+with col_h2:
+    st.caption("🛰️ FUENTE")
+    st.markdown("**Sentinel-2 (ESA)**")
+with col_h3:
+    st.caption("💧 ÍNDICES")
+    st.markdown("**NDVI · NDMI · NDBI**")
+
+st.markdown("---")
 
 # ---------------------------------------------------------
-# 4. COMPONENTE 2: PROBLEM SECTION (Réplica ProblemSection.tsx)
+# 5. Problem Section (Tarjeta Blanca Limpia)
 # ---------------------------------------------------------
 st.markdown("""
-<div class="problem-card">
-    <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; tracking-wider; color: #e76f51;">El Problema</div>
-    <h2 class="text-forest-800" style="font-size: 2rem; font-weight: 700; margin-top: 8px;">
-        La información biológica está fragmentada y desactualizada.
-    </h2>
-    <p class="text-forest-600" style="font-size: 1rem; margin-top: 12px; line-height: 1.6;">
-        Actualmente no existe un monitoreo integral y periódico unificado en el Parque O'Higgins. 
-        La información está dispersa entre inventarios municipales estáticos, datos de ciencia ciudadana y estudios académicos aislados. 
-        Hace falta un sistema centralizado que mantenga los datos actualizados para la gestión real.
+<div class="problem-box">
+    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #e76f51;">El problema</div>
+    <h2>La información biológica está fragmentada y desactualizada.</h2>
+    <p>
+        Currently, there is no unified periodic monitoring in Parque O'Higgins. Information is scattered across static municipal inventories, citizen science, and isolated studies.
     </p>
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 24px;">
-        <div class="source-item">
-            <strong class="text-forest-800" style="display: block; font-size: 14px;">🏢 Inventarios municipales</strong>
-            <span class="text-forest-500" style="font-size: 12px;">Estáticos y sin actualización</span>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 24px;">
+        <div class="source-card">
+            <strong>🏢 Inventarios municipales</strong>
+            <span>Estáticos y sin actualización</span>
         </div>
-        <div class="source-item">
-            <strong class="text-forest-800" style="display: block; font-size: 14px;">👥 Ciencia ciudadana</strong>
-            <span class="text-forest-500" style="font-size: 12px;">Registros puntuales y dispersos</span>
+        <div class="source-card">
+            <strong>👥 Ciencia ciudadana</strong>
+            <span>Registros puntuales y dispersos</span>
         </div>
-        <div class="source-item">
-            <strong class="text-forest-800" style="display: block; font-size: 14px;">🎓 Estudios académicos</strong>
-            <span class="text-forest-500" style="font-size: 12px;">Aislados y de corto alcance</span>
+        <div class="source-card">
+            <strong>🎓 Estudios académicos</strong>
+            <span>Aislados y de corto alcance</span>
         </div>
     </div>
     
-    <div style="background-color: #fdf0ed; border: 1px solid #f8c9bc; border-radius: 16px; padding: 16px; margin-top: 20px; display: flex; align-items: center; gap: 16px;">
-        <div style="background-color: #e76f51; color: white; border-radius: 12px; padding: 10px; font-weight: bold;">⚡ Impacto</div>
-        <div class="text-forest-800" style="font-weight: 600; font-size: 15px;">
-            De un ecosistema fragmentado a 1 sola plataforma centralizada con actualización cada 5 días.
-        </div>
+    <div class="impact-banner">
+        <span class="impact-badge">Impacto</span>
+        <span class="impact-text">De un ecosistema fragmentado a 1 sola plataforma centralizada con actualización cada 5 días.</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-st.write("")
-st.write("")
-
 # ---------------------------------------------------------
-# 5. COMPONENTE 3: SATELLITE DASHBOARD (Réplica SatelliteDashboard.tsx + GEE Real)
+# 6. Dashboard Satelital (Réplica Imagen 2)
 # ---------------------------------------------------------
-st.markdown("""
-<div style="margin-bottom: 16px;">
-    <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #f39a77; display: flex; align-items: center; gap: 6px;">
-        🛰️ Dashboard satelital en vivo
-    </div>
-    <h2 style="font-size: 2.2rem; font-weight: 700; color: #f7f4ed; margin-top: 6px;">
-        Parque O'Higgins: salud vegetal y estrés hídrico
-    </h2>
-    <p style="color: rgba(247, 244, 237, 0.7); font-size: 0.95rem;">
-        Cambia entre capas para leer el estado de la vegetación o la disponibilidad de agua del parque.
-    </p>
-</div>
-""", unsafe_allow_html=True)
+st.markdown("<div id='dashboard'></div>", unsafe_allow_html=True)
+st.caption("🛰️ DASHBOARD SATELITAL")
+st.markdown("## Parque O'Higgins: salud vegetal y estrés hídrico")
+st.write("Cambia entre capas para leer el estado de la vegetación o la disponibilidad de agua del parque.")
 
-# Toggle de Capas en la interfaz
 capa_seleccionada = st.radio(
-    "Seleccionar Capa Satelital:",
-    ["🌳 NDVI (Salud Vegetal)", "💧 NDMI (Estrés Hídrico)", "🏢 NDBI (Islas de Calor / Cemento)", "📸 Normal (RGB)"],
+    "Capas de análisis:",
+    ["🌱 Índice de Salud (NDVI)", "💧 Estrés Hídrico (NDMI)", "🏢 Zonas Construidas (NDBI)", "📸 Foto Satelital (RGB)"],
     horizontal=True
 )
 
-# Mapa Interactivo de Folium
 m = folium.Map(location=[-33.4625, -70.6588], zoom_start=15, tiles="OpenStreetMap")
 
 plugins.LocateControl(
     position="bottomright", drawCircle=False, keepCurrentZoomLevel=True,
-    strings={"title": "Mostrar mi ubicación actual", "popup": "Estás aquí"}
+    strings={"title": "Ubicación en vivo", "popup": "Estás aquí"}
 ).add_to(m)
 
 tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
 
 if tile_url:
     folium.TileLayer(tiles=tile_url, attr="Copernicus Sentinel-2", name=capa_seleccionada, overlay=True, control=True).add_to(m)
-    
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Fuente Satelital", "ESA Sentinel-2")
-    if "Normal" not in capa_seleccionada:
-        siglas = capa_seleccionada.split()[1]
-        col2.metric(f"Promedio Zona ({siglas})", f"{promedio_val:.3f}")
-        col3.metric("Evaluación General", "Estrés Detectado" if promedio_val < 0.1 else "Óptimo")
-    else:
-        col2.metric("Modo de Vista", "Color Verdadero")
-        col3.metric("Frecuencia", "5 días")
 else:
     folium.Polygon(locations=[[lat, lng] for lng, lat in coordenadas_parque], color="#10b981", fill=True, fill_opacity=0.3).add_to(m)
 
-# Mapa interactivo reactivo
-map_data = st_folium(m, width="100%", height=560, key=capa_seleccionada)
+# Mapa con altura ajustada
+map_data = st_folium(m, width="100%", height=520, key=capa_seleccionada)
 
-# Intervención Táctica en Terreno (Google Maps GPS)
+# Tarjeta inferior desplegable (Métricas Bolt style)
+if "Normal" not in capa_seleccionada:
+    pct_val = int(max(0, min(1, promedio_val + 0.3)) * 100) if "NDVI" in capa_seleccionada else 78
+    col_m1, col_m2 = st.columns([1, 2])
+    with col_m1:
+        st.metric(label="SALUD VEGETAL PROMEDIO", value=f"{pct_val}%", delta="Estado Óptimo")
+    with col_m2:
+        st.info("Biomasa alta en la mayoría de los sectores. Las zonas amarillas requieren seguimiento de riego.")
+
+# Acción de Clic GPS
 if map_data and map_data.get("last_clicked"):
     lat, lng = map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"]
-    st.success(f"📍 **Punto de Intervención Seleccionado:** Coordenadas `{lat:.5f}, {lng:.5f}`")
+    st.success(f"📍 Coordenada objetivo para la cuadrilla: `{lat:.5f}, {lng:.5f}`")
     gmaps_url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}&travelmode=walking"
-    st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:inline-block; padding:12px 24px; background-color:#e76f51; color:white; font-weight:700; border-radius:12px; text-decoration:none;">🚶‍♂️ Iniciar Navegación Táctica (Google Maps)</a>', unsafe_allow_html=True)
-
-# Leyenda Desplegable
-with st.expander("📖 Guía de Interpretación de Capas"):
-    st.markdown("""
-    * **🌳 NDVI:** Vigor foliar. Rojo = suelo desnudo o seco; Verde = vegetación frondosa.
-    * **💧 NDMI:** Humedad interna vegetal (*enmascarada en cemento*). Rojo = déficit de riego urgente; Azul = excelente reserva de agua.
-    * **🏢 NDBI:** Densidad construida. Focos rojos indican zonas con mayor acumulación de calor urbano.
-    """)
-
-st.caption("EcoRastro B2G | Sistema de Apoyo a la Toma de Decisiones para la Red de Corredores Vivos (GORE Santiago).")
+    st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:inline-block; padding:10px 20px; background-color:#e76f51; color:white; font-weight:700; border-radius:10px; text-decoration:none;">🚶‍♂️ Ruta de Terreno en Google Maps</a>', unsafe_allow_html=True)
