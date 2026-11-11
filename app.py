@@ -1,5 +1,6 @@
 import streamlit as st
 import folium
+from folium import plugins
 from streamlit_folium import st_folium
 import ee
 import json
@@ -129,11 +130,20 @@ capa_seleccionada = st.sidebar.radio(
     ]
 )
 
+# Mapa Base OpenStreetMap
 m = folium.Map(
     location=[-33.4625, -70.6588],
     zoom_start=15,
     tiles="OpenStreetMap"
 )
+
+# Agregar el botón de GPS (Geolocalización del trabajador en terreno)
+plugins.LocateControl(
+    position="bottomright",
+    drawCircle=False,
+    keepCurrentZoomLevel=True,
+    strings={"title": "Mostrar mi ubicación actual", "popup": "Estás aquí"}
+).add_to(m)
 
 tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
 
@@ -168,10 +178,30 @@ else:
     ).add_to(m)
 
 # El parámetro key asegura que el mapa se actualice al cambiar el filtro
-st_folium(m, width="100%", height=550, key=capa_seleccionada)
+# Guardamos el resultado en "map_data" para detectar los clics
+map_data = st_folium(m, width="100%", height=550, key=capa_seleccionada)
 
 # ---------------------------------------------------------
-# 5. Leyenda y Diccionario de Datos
+# 5. Acción en Terreno (Conexión con Google Maps)
+# ---------------------------------------------------------
+if map_data and map_data.get("last_clicked"):
+    lat = map_data["last_clicked"]["lat"]
+    lng = map_data["last_clicked"]["lng"]
+    
+    st.success("📍 **Punto de Intervención Seleccionado**")
+    st.write(f"Coordenadas exactas: `{lat:.5f}, {lng:.5f}`")
+    
+    # Crear URLs dinámicas hacia Google Maps y Street View
+    gmaps_url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}&travelmode=walking"
+    streetview_url = f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lng}"
+    
+    st.markdown(f"""
+    <a href="{gmaps_url}" target="_blank" style="display:inline-block; padding:8px 16px; background-color:#1a73e8; color:white; text-decoration:none; border-radius:4px; margin-right:10px;">🚶‍♂️ Iniciar Ruta (Google Maps)</a>
+    <a href="{streetview_url}" target="_blank" style="display:inline-block; padding:8px 16px; background-color:#34a853; color:white; text-decoration:none; border-radius:4px;">📸 Ver en Street View</a>
+    """, unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 6. Leyenda y Diccionario de Datos
 # ---------------------------------------------------------
 st.markdown("---")
 with st.expander("📖 Leyenda y Explicación de Indicadores (Haz clic para desplegar)"):
