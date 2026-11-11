@@ -167,7 +167,7 @@ else:
         popup="Polígono Objetivo: Parque O'Higgins"
     ).add_to(m)
 
-st_folium(m, width="100%", height=550)
+st_folium(m, width="100%", height=550, key=capa_seleccionada)
 
 st.markdown("---")
 st.caption("EcoRastro B2G | Sistema de Apoyo a la Toma de Decisiones para la Estrategia de Corredores Verdes (GORE / Municipalidad de Santiago).")
