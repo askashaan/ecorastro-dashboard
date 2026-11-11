@@ -6,19 +6,46 @@ import ee
 import json
 
 # ---------------------------------------------------------
-# 1. Configuración de Página
+# 1. Configuración de Página y Estilos CSS (UI/UX)
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="EcoRastro | Planificación de Corredores Verdes",
-    page_icon="🛰️",
-    layout="wide"
+    page_title="EcoRastro | Corredores Vivos",
+    page_icon="🌱",
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-st.title("🛰️ EcoRastro: Inteligencia Geoespacial & Corredores Verdes")
+# Inyección de CSS para estilizar como Landing Page de Startup
 st.markdown("""
-Plataforma B2G de apoyo a la toma de decisiones para la **Municipalidad de Santiago y el GORE**. 
-Monitoreo satelital (*Sentinel-2 vía Google Earth Engine*) para la identificación de islas de calor y planificación de infraestructura verde urbana.
-""")
+    <style>
+    /* Colores y tipografía base */
+    .stApp { background-color: #fcfcfc; }
+    h1, h2, h3 { color: #1e3a1f; font-family: 'Helvetica Neue', sans-serif; }
+    
+    /* Estilización de las Pestañas */
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { 
+        height: 55px; 
+        background-color: #e8f5e9; 
+        border-radius: 8px 8px 0px 0px; 
+        padding: 10px 20px;
+        font-weight: 600;
+        color: #2e7d32;
+    }
+    .stTabs [aria-selected="true"] { 
+        background-color: #2e7d32 !important; 
+        color: white !important; 
+    }
+    
+    /* Tarjetas de Métricas */
+    div[data-testid="stMetricValue"] { color: #2e7d32; }
+    </style>
+""", unsafe_allow_html=True)
+
+# Encabezado Principal
+st.title("🌱 EcoRastro")
+st.markdown("#### Inteligencia Geoespacial para la Red de Corredores Vivos del GORE Santiago")
+st.markdown("---")
 
 # ---------------------------------------------------------
 # 2. Inicialización Segura de Google Earth Engine
@@ -44,35 +71,22 @@ def init_earth_engine():
             ee.Initialize()
             return True
     except Exception as e:
-        st.sidebar.error(f"⚠️ Error GEE: {str(e)}")
         return False
 
 ee_status = init_earth_engine()
 
-# Coordenadas ampliadas para cubrir el Parque O'Higgins y bordes viales
+# Coordenadas ampliadas para cubrir el Parque O'Higgins
 coordenadas_parque = [
-    [-70.6678, -33.4530],
-    [-70.6525, -33.4530],
-    [-70.6525, -33.4715],
-    [-70.6678, -33.4715],
-    [-70.6678, -33.4530]
+    [-70.6678, -33.4530], [-70.6525, -33.4530],
+    [-70.6525, -33.4715], [-70.6678, -33.4715], [-70.6678, -33.4530]
 ]
 
-# ---------------------------------------------------------
-# 3. Función de Obtención de Capas Satelitales (Avanzada)
-# ---------------------------------------------------------
+# Función Satelital (Oculta del Frontend)
 def obtener_capa_satelital(capa_tipo):
-    if not ee_status:
-        return None, 0.0
-
+    if not ee_status: return None, 0.0
     try:
         parque_geometry = ee.Geometry.Polygon(coordenadas_parque)
-        coleccion = (
-            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-            .filterBounds(parque_geometry)
-            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 15))
-            .sort("system:time_start", False)
-        )
+        coleccion = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(parque_geometry).filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 15)).sort("system:time_start", False)
         imagen = coleccion.first()
 
         if "Normal" in capa_tipo:
@@ -82,15 +96,12 @@ def obtener_capa_satelital(capa_tipo):
 
         elif "NDVI" in capa_tipo:
             corte = imagen.normalizedDifference(["B8", "B4"]).rename("NDVI").clip(parque_geometry)
-            # Rango más estricto para forzar el contraste entre pasto seco y árbol sano
             vis_params = {"min": 0.1, "max": 0.7, "palette": ["#d73027", "#fc8d59", "#fee08b", "#d9ef8b", "#91cf60", "#1a9850"]}
         
         elif "NDMI" in capa_tipo:
             ndvi = imagen.normalizedDifference(["B8", "B4"])
-            # ENMASCARAMIENTO: Solo mostramos estrés hídrico donde el NDVI indica que SÍ hay vegetación
             ndmi = imagen.normalizedDifference(["B8A", "B11"])
             corte = ndmi.updateMask(ndvi.gt(0.15)).rename("NDMI").clip(parque_geometry)
-            # Paleta de Sequía (Rojo) a Ultra Hidratado (Azul oscuro)
             vis_params = {"min": -0.05, "max": 0.3, "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#abd9e9", "#74add1", "#4575b4"]}
             
         elif "NDBI" in capa_tipo:
@@ -98,131 +109,88 @@ def obtener_capa_satelital(capa_tipo):
             vis_params = {"min": -0.2, "max": 0.2, "palette": ["#1a9850", "#91cf60", "#d9ef8b", "#fee08b", "#fc8d59", "#d73027"]}
 
         map_id = corte.getMapId(vis_params)
-        
-        mean_stat = corte.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=parque_geometry,
-            scale=10
-        ).getInfo()
-
-        if mean_stat and list(mean_stat.values())[0] is not None:
-            promedio_val = list(mean_stat.values())[0]
-        else:
-            promedio_val = 0.0
-            
+        mean_stat = corte.reduceRegion(reducer=ee.Reducer.mean(), geometry=parque_geometry, scale=10).getInfo()
+        promedio_val = list(mean_stat.values())[0] if mean_stat and list(mean_stat.values())[0] is not None else 0.0
         return map_id["tile_fetcher"].url_format, promedio_val
-
-    except Exception as e:
-        st.sidebar.error(f"⚠️ Error procesando capa: {str(e)}")
+    except Exception:
         return None, 0.0
 
 # ---------------------------------------------------------
-# 4. Interfaz de Usuario & Mapa
+# 3. Estructura de Pestañas (El "Pitch" y el "Dashboard")
 # ---------------------------------------------------------
-st.sidebar.header("⚙️ Filtros Satelitales")
-capa_seleccionada = st.sidebar.radio(
-    "Selecciona la capa de análisis:",
-    [
-        "📸 Mapa Normal (RGB)", 
-        "🌳 NDVI (Salud Vegetal)", 
-        "💧 NDMI (Estrés Hídrico/Humedad)", 
-        "🏢 NDBI (Cemento y Asfalto)"
-    ]
-)
+tab_pitch, tab_mapa = st.tabs(["📖 Sobre el Proyecto", "🛰️ Visor Satelital B2G"])
 
-# Mapa Base OpenStreetMap
-m = folium.Map(
-    location=[-33.4625, -70.6588],
-    zoom_start=15,
-    tiles="OpenStreetMap"
-)
+# --- PESTAÑA 1: LANDING PAGE EXPLICATIVA ---
+with tab_pitch:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.info("### 🚨 El Problema\nLas ciudades enfrentan el aumento de **Islas de Calor Urbano**. Los municipios invierten en áreas verdes, pero el mantenimiento y riego se realizan a ciegas, desperdiciando recursos hídricos y perdiendo cobertura vegetal crítica por falta de datos en tiempo real.")
+    with col2:
+        st.success("### 💡 La Solución: EcoRastro\nUna plataforma B2G que traduce datos satelitales (Copernicus) en **acciones tácticas**. Usamos análisis multiespectral para identificar estrés hídrico antes de que sea visible, guiando a las cuadrillas municipales exactamente a las zonas que requieren intervención.")
 
-# Agregar el botón de GPS (Geolocalización del trabajador en terreno)
-plugins.LocateControl(
-    position="bottomright",
-    drawCircle=False,
-    keepCurrentZoomLevel=True,
-    strings={"title": "Mostrar mi ubicación actual", "popup": "Estás aquí"}
-).add_to(m)
-
-tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
-
-if tile_url:
-    folium.TileLayer(
-        tiles=tile_url,
-        attr="Google Earth Engine / Copernicus Sentinel-2",
-        name=capa_seleccionada,
-        overlay=True,
-        control=True
-    ).add_to(m)
+    st.markdown("### 🗺️ ¿Cómo funciona?")
+    col_a, col_b, col_c = st.columns(3)
+    col_a.markdown("**1. Escaneo Satelital:**\nSentinel-2 de la Agencia Espacial Europea monitorea la zona con visión infrarroja cada 5 días.")
+    col_b.markdown("**2. Procesamiento GEE:**\nNuestra nube filtra cemento y calcula la humedad interna de las hojas mediante el índice NDMI.")
+    col_c.markdown("**3. Acción en Terreno:**\nEl operario hace clic en el área crítica y se le genera una ruta GPS directa para intervenir.")
     
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Fuente de Datos", "Sentinel-2 (ESA)")
-    col2.metric("Resolución Espacial", "10 metros / píxel")
-    
-    if "Normal" not in capa_seleccionada:
-        siglas = capa_seleccionada.split()[1]
-        col3.metric(f"Promedio {siglas}", f"{promedio_val:.3f}")
-    else:
-        col3.metric("Tipo de Vista", "Color Verdadero")
-else:
-    if not ee_status:
-        st.sidebar.warning("⚠️ Modo Demostración Activo.")
-    
-    folium.Polygon(
-        locations=[[lat, lng] for lng, lat in coordenadas_parque],
-        color="#10b981" if "NDVI" in capa_seleccionada else "#38bdf8",
-        fill=True,
-        fill_opacity=0.3,
-        popup="Polígono Objetivo: Parque O'Higgins"
-    ).add_to(m)
-
-# El parámetro key asegura que el mapa se actualice al cambiar el filtro
-# Guardamos el resultado en "map_data" para detectar los clics
-map_data = st_folium(m, width="100%", height=550, key=capa_seleccionada)
-
-# ---------------------------------------------------------
-# 5. Acción en Terreno (Conexión con Google Maps)
-# ---------------------------------------------------------
-if map_data and map_data.get("last_clicked"):
-    lat = map_data["last_clicked"]["lat"]
-    lng = map_data["last_clicked"]["lng"]
-    
-    st.success("📍 **Punto de Intervención Seleccionado**")
-    st.write(f"Coordenadas exactas: `{lat:.5f}, {lng:.5f}`")
-    
-    # Crear URLs dinámicas hacia Google Maps y Street View
-    gmaps_url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}&travelmode=walking"
-    streetview_url = f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lng}"
-    
-    st.markdown(f"""
-    <a href="{gmaps_url}" target="_blank" style="display:inline-block; padding:8px 16px; background-color:#1a73e8; color:white; text-decoration:none; border-radius:4px; margin-right:10px;">🚶‍♂️ Iniciar Ruta (Google Maps)</a>
-    <a href="{streetview_url}" target="_blank" style="display:inline-block; padding:8px 16px; background-color:#34a853; color:white; text-decoration:none; border-radius:4px;">📸 Ver en Street View</a>
-    """, unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# 6. Leyenda y Diccionario de Datos
-# ---------------------------------------------------------
-st.markdown("---")
-with st.expander("📖 Leyenda y Explicación de Indicadores (Haz clic para desplegar)"):
+    st.markdown("---")
+    st.markdown("### 🚀 Roadmap del Proyecto (Desafío GS 2)")
     st.markdown("""
-    ### 🌳 NDVI (Índice de Salud Vegetal)
-    Mide el vigor, la densidad de las hojas y la capacidad de realizar fotosíntesis. 
-    * 🔴 **Rojo / Naranja:** Tierra seca, suelo desnudo o vegetación muerta.
-    * 🟡 **Amarillo:** Pasto en mal estado o vegetación muy rala.
-    * 🟢 **Verde Oscuro:** Árboles frondosos y pasto muy sano (Alta cobertura de dosel).
-    
-    ### 💧 NDMI (Índice de Estrés Hídrico)
-    *Esta capa usa inteligencia geoespacial para aislar el cemento y analizar **solo la vegetación viva**.*
-    * 🔴 **Rojo / Naranja:** Plantas con **fuerte déficit de agua** (Requieren riego priorizado para no morir).
-    * 🟡 **Amarillo / Celeste claro:** Nivel de humedad intermedio o normal.
-    * 🔵 **Azul Oscuro:** Árboles y áreas con **excelente hidratación** y reservas de agua internas.
-    
-    ### 🏢 NDBI (Zonas Construidas / Superficies Impermeables)
-    Identifica las áreas responsables de generar las "Islas de Calor Urbano".
-    * 🟢 **Verde:** Zonas naturales que mitigan la temperatura (sin cemento).
-    * 🟡 **Amarillo:** Zonas de uso mixto o suelo compactado.
-    * 🔴 **Rojo Oscuro:** Alta densidad de asfalto, hormigón y grandes techos (Focos donde el calor queda atrapado).
+    - ✅ **Fase 1 (MVP Actual):** Visor web satelital B2G para la toma de decisiones estratégicas. Enrutamiento GPS táctico para cuadrillas.
+    - ⏳ **Fase 2:** Integración de sensor térmico Landsat 8/9 para cálculo de Temperatura Superficial (LST) e interfaz móvil.
+    - 🔮 **Fase 3:** Sistema predictivo con IA para prevenir pérdida de cobertura arbórea y evaluación automática del presupuesto de riego municipal.
     """)
 
-st.caption("EcoRastro B2G | Sistema de Apoyo a la Toma de Decisiones para la Estrategia de Corredores Verdes (GORE / Municipalidad de Santiago).")
+# --- PESTAÑA 2: EL VISOR OPERATIVO (Código intacto pero estilizado) ---
+with tab_mapa:
+    st.markdown("### Panel de Control Operativo")
+    
+    # Controles ahora horizontales para mayor elegancia
+    capa_seleccionada = st.radio(
+        "Filtro de Análisis Multiespectral:",
+        ["📸 Normal (RGB)", "🌳 NDVI (Cobertura Vegetal)", "💧 NDMI (Estrés Hídrico)", "🏢 NDBI (Islas de Calor / Cemento)"],
+        horizontal=True
+    )
+    
+    # Construcción del Mapa Folium
+    m = folium.Map(location=[-33.4625, -70.6588], zoom_start=15, tiles="OpenStreetMap")
+    
+    plugins.LocateControl(
+        position="bottomright", drawCircle=False, keepCurrentZoomLevel=True,
+        strings={"title": "Mostrar mi ubicación actual", "popup": "Estás aquí"}
+    ).add_to(m)
+
+    tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
+
+    if tile_url:
+        folium.TileLayer(tiles=tile_url, attr="Copernicus Sentinel-2", name=capa_seleccionada, overlay=True, control=True).add_to(m)
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Fuente de Datos", "ESA Sentinel-2 (10m/px)")
+        if "Normal" not in capa_seleccionada:
+            siglas = capa_seleccionada.split()[1]
+            c2.metric(f"Promedio de la Zona ({siglas})", f"{promedio_val:.3f}")
+            c3.metric("Estado General", "Requiere Atención" if promedio_val < 0.1 else "Saludable")
+        else:
+            c2.metric("Tipo de Vista", "Color Verdadero")
+            c3.metric("Frecuencia de Paso", "Cada 5 días")
+    else:
+        folium.Polygon(locations=[[lat, lng] for lng, lat in coordenadas_parque], color="#10b981", fill=True, fill_opacity=0.3).add_to(m)
+
+    # Renderizado y captura de clics
+    map_data = st_folium(m, width="100%", height=500, key=capa_seleccionada)
+
+    # Lógica de GPS para Terreno
+    if map_data and map_data.get("last_clicked"):
+        lat, lng = map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"]
+        st.success(f"📍 **Cuadrilla Desplegada** - Coordenadas objetivo: `{lat:.5f}, {lng:.5f}`")
+        gmaps_url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}&travelmode=walking"
+        st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:inline-block; padding:10px 20px; background-color:#1a73e8; color:white; font-weight:bold; border-radius:6px; text-decoration:none;">🚶‍♂️ Iniciar Navegación (Google Maps)</a>', unsafe_allow_html=True)
+
+    with st.expander("📖 Diccionario de Datos Técnicos"):
+        st.markdown("""
+        * **NDVI:** Mide el vigor de la hoja. Rojo/Naranja = Tierra o vegetación muerta; Verde = Árboles frondosos.
+        * **NDMI:** *Capa inteligente (excluye asfalto).* Mide reservas de agua. Rojo = Fuerte déficit hídrico; Azul = Excelente hidratación.
+        * **NDBI:** Identifica áreas impermeables. Rojo oscuro = Alta densidad de asfalto (Focos de calor).
+        """)
