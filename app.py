@@ -16,146 +16,43 @@ st.set_page_config(
 )
 
 # Estilos CSS con alto contraste y diseño 1:1 con Bolt
+# ---------------------------------------------------------
+# PROBLEM SECTION (Estilizado limpio con HTML nativo seguro)
+# ---------------------------------------------------------
 st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-
-    html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-    }
+<div style="background-color: #f7f4ed; border-radius: 24px; padding: 36px; margin-top: 32px; margin-bottom: 32px; font-family: sans-serif;">
+    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #e76f51;">El problema</div>
+    <h2 style="color: #142e20; font-size: 1.8rem; font-weight: 700; margin-top: 8px; margin-bottom: 12px; line-height: 1.2;">
+        La información biológica está fragmentada y desactualizada.
+    </h2>
+    <p style="color: #2d5a3f; font-size: 0.95rem; line-height: 1.6; margin-bottom: 24px;">
+        Actualmente no existe un monitoreo integral y periódico unificado en el Parque O'Higgins. 
+        La información está dispersa entre inventarios municipales estáticos, datos de ciencia ciudadana y estudios académicos aislados. 
+        Hace falta un sistema centralizado que mantenga los datos actualizados para la gestión real.
+    </p>
     
-    .stApp {
-        background-color: #0d1f15 !important;
-        color: #f7f4ed !important;
-    }
-
-    #MainMenu, footer, header { visibility: hidden; }
-
-    /* Barra de Navegación */
-    .bolt-nav {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 12px 24px;
-        background-color: #0d1f15;
-        border-bottom: 1px solid rgba(247, 244, 237, 0.1);
-        margin-bottom: 32px;
-    }
-    .bolt-logo {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-weight: 700;
-        font-size: 1.2rem;
-        color: #f7f4ed;
-    }
-    .bolt-btn-nav {
-        background-color: #e76f51;
-        color: #ffffff !important;
-        padding: 8px 20px;
-        border-radius: 9999px;
-        font-weight: 600;
-        font-size: 0.875rem;
-        text-decoration: none;
-    }
-
-    /* Hero Section */
-    .hero-title {
-        font-size: 3rem;
-        font-weight: 700;
-        color: #f7f4ed;
-        line-height: 1.1;
-        margin-bottom: 16px;
-    }
-    .hero-subtitle {
-        color: rgba(247, 244, 237, 0.8);
-        font-size: 1.125rem;
-        max-width: 650px;
-        line-height: 1.6;
-        margin-bottom: 24px;
-    }
-    .badge-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background-color: rgba(247, 244, 237, 0.1);
-        border: 1px solid rgba(247, 244, 237, 0.2);
-        padding: 4px 14px;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: #f7f4ed;
-        margin-bottom: 16px;
-    }
-
-    /* Problem Section Card (Blanca / Beige) */
-    .problem-box {
-        background-color: #f7f4ed;
-        color: #142e20 !important;
-        border-radius: 24px;
-        padding: 40px;
-        margin-top: 40px;
-        margin-bottom: 40px;
-    }
-    .problem-box h2 {
-        color: #142e20 !important;
-        font-size: 2rem;
-        font-weight: 700;
-        margin-top: 8px;
-    }
-    .problem-box p {
-        color: #2d5a3f !important;
-        font-size: 1rem;
-        line-height: 1.6;
-    }
-
-    /* Items dentro de la tarjeta blanca */
-    .source-card {
-        background-color: #ffffff;
-        border: 1px dashed #d1e2d7;
-        border-radius: 16px;
-        padding: 16px;
-        margin-top: 12px;
-    }
-    .source-card strong {
-        color: #142e20 !important;
-        display: block;
-        font-size: 0.95rem;
-    }
-    .source-card span {
-        color: #407b57 !important;
-        font-size: 0.825rem;
-    }
-
-    .impact-banner {
-        background-color: #fdf0ed;
-        border: 1px solid #f8c9bc;
-        border-radius: 16px;
-        padding: 16px 20px;
-        margin-top: 24px;
-        display: flex;
-        align-items: center;
-        gap: 16px;
-    }
-    .impact-badge {
-        background-color: #e76f51;
-        color: #ffffff;
-        padding: 6px 14px;
-        border-radius: 10px;
-        font-weight: 700;
-        font-size: 0.875rem;
-    }
-    .impact-text {
-        color: #142e20 !important;
-        font-weight: 600;
-        font-size: 0.95rem;
-    }
-
-    /* Ajuste para los radios de Streamlit */
-    div[data-testid="stRadio"] label {
-        color: #f7f4ed !important;
-    }
-</style>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+        <div style="background-color: #ffffff; border: 1px dashed #c2d6c9; border-radius: 16px; padding: 14px;">
+            <strong style="color: #142e20; display: block; font-size: 0.9rem; margin-bottom: 4px;">🏢 Inventarios municipales</strong>
+            <span style="color: #407b57; font-size: 0.8rem;">Estáticos y sin actualización</span>
+        </div>
+        <div style="background-color: #ffffff; border: 1px dashed #c2d6c9; border-radius: 16px; padding: 14px;">
+            <strong style="color: #142e20; display: block; font-size: 0.9rem; margin-bottom: 4px;">👥 Ciencia ciudadana</strong>
+            <span style="color: #407b57; font-size: 0.8rem;">Registros puntuales y dispersos</span>
+        </div>
+        <div style="background-color: #ffffff; border: 1px dashed #c2d6c9; border-radius: 16px; padding: 14px;">
+            <strong style="color: #142e20; display: block; font-size: 0.9rem; margin-bottom: 4px;">🎓 Estudios académicos</strong>
+            <span style="color: #407b57; font-size: 0.8rem;">Aislados y de corto alcance</span>
+        </div>
+    </div>
+    
+    <div style="background-color: #fdf0ed; border: 1px solid #f8c9bc; border-radius: 14px; padding: 14px 18px; margin-top: 20px; display: flex; align-items: center; gap: 14px;">
+        <span style="background-color: #e76f51; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; white-space: nowrap;">⚡ Impacto</span>
+        <span style="color: #142e20; font-weight: 600; font-size: 0.9rem;">
+            De un ecosistema fragmentado a 1 sola plataforma centralizada con actualización cada 5 días.
+        </span>
+    </div>
+</div>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
