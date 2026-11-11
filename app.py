@@ -48,15 +48,6 @@ def init_earth_engine():
 
 ee_status = init_earth_engine()
 
-# Coordenadas reales del Parque O'Higgins
-coordenadas_parque = [
-    [-70.6625, -33.4578],
-    [-70.6552, -33.4578],
-    [-70.6552, -33.4672],
-    [-70.6625, -33.4672],
-    [-70.6625, -33.4578]
-]
-
 # Coordenadas ampliadas para cubrir el Parque O'Higgins y bordes viales
 coordenadas_parque = [
     [-70.6678, -33.4530],
@@ -82,39 +73,40 @@ def obtener_capa_satelital(capa_tipo):
             .sort("system:time_start", False)
         )
         imagen = coleccion.first()
-        promedio_val = 0.0
 
-        if "Normal (RGB)" in capa_tipo:
-            # Color verdadero (Bandas Roja, Verde, Azul)
+        # 1. Mapa Normal (Color Verdadero)
+        if "Normal" in capa_tipo:
             corte = imagen.select(["B4", "B3", "B2"]).clip(parque_geometry)
             vis_params = {"min": 0, "max": 2500, "gamma": 1.2}
-            return corte.getMapId(vis_params)["tile_fetcher"].url_format, 0.0
+            map_id = corte.getMapId(vis_params)
+            # Retornamos 0.0 porque un mapa RGB no tiene un promedio de indicador
+            return map_id["tile_fetcher"].url_format, 0.0
 
+        # 2. NDVI (Salud Vegetal)
         elif "NDVI" in capa_tipo:
-            # Salud Vegetal (Rojo y NIR)
             corte = imagen.normalizedDifference(["B8", "B4"]).rename("NDVI").clip(parque_geometry)
             vis_params = {"min": 0.0, "max": 0.8, "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#d9ef8b", "#a6d96a", "#1a9850"]}
         
+        # 3. NDMI (Estrés Hídrico)
         elif "NDMI" in capa_tipo:
-            # Estrés Hídrico en vegetación (NIR y SWIR)
             corte = imagen.normalizedDifference(["B8A", "B11"]).rename("NDMI").clip(parque_geometry)
             vis_params = {"min": -0.2, "max": 0.4, "palette": ["#d73027", "#fc8d59", "#fee08b", "#e0f3f8", "#91bfdb", "#4575b4"]}
             
+        # 4. NDBI (Zonas Construidas / Asfalto)
         elif "NDBI" in capa_tipo:
-            # Zonas Construidas / Asfalto (SWIR y NIR)
             corte = imagen.normalizedDifference(["B11", "B8"]).rename("NDBI").clip(parque_geometry)
             vis_params = {"min": -0.2, "max": 0.3, "palette": ["#1a9850", "#91cf60", "#d9ef8b", "#fee08b", "#fc8d59", "#d73027"]}
 
         map_id = corte.getMapId(vis_params)
+        
+        # Calculamos el promedio SOLO si es un índice (NDVI, NDMI, NDBI)
         mean_stat = corte.reduceRegion(
             reducer=ee.Reducer.mean(),
             geometry=parque_geometry,
             scale=10
         ).getInfo()
 
-        if mean_stat:
-            promedio_val = list(mean_stat.values())[0]
-            
+        promedio_val = list(mean_stat.values())[0] if mean_stat else 0.0
         return map_id["tile_fetcher"].url_format, promedio_val
 
     except Exception as e:
@@ -135,14 +127,12 @@ capa_seleccionada = st.sidebar.radio(
     ]
 )
 
-# Mapa Base OpenStreetMap (Limpio de errores de API key)
+# Mapa Base OpenStreetMap
 m = folium.Map(
     location=[-33.4625, -70.6588],
     zoom_start=15,
     tiles="OpenStreetMap"
 )
-
-tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
 
 tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
 
@@ -158,7 +148,13 @@ if tile_url:
     col1, col2, col3 = st.columns(3)
     col1.metric("Fuente de Datos", "Sentinel-2 (ESA)")
     col2.metric("Resolución Espacial", "10 metros / píxel")
-    col3.metric(f"Promedio Real {capa_seleccionada.split()[0]}", f"{promedio_val:.3f}")
+    
+    # Lógica inteligente para mostrar el promedio numérico
+    if "Normal" not in capa_seleccionada:
+        siglas = capa_seleccionada.split()[1] # Extrae "NDVI", "NDMI", etc.
+        col3.metric(f"Promedio {siglas}", f"{promedio_val:.3f}")
+    else:
+        col3.metric("Tipo de Vista", "Color Verdadero")
 else:
     if not ee_status:
         st.sidebar.warning("⚠️ Modo Demostración Activo.")
