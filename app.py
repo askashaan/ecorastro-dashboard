@@ -58,7 +58,7 @@ coordenadas_parque = [
 ]
 
 # ---------------------------------------------------------
-# 3. Función de Obtención de Capas Satelitales (Mejorada)
+# 3. Función de Obtención de Capas Satelitales (Avanzada)
 # ---------------------------------------------------------
 def obtener_capa_satelital(capa_tipo):
     if not ee_status:
@@ -74,39 +74,41 @@ def obtener_capa_satelital(capa_tipo):
         )
         imagen = coleccion.first()
 
-        # 1. Mapa Normal (Color Verdadero)
         if "Normal" in capa_tipo:
             corte = imagen.select(["B4", "B3", "B2"]).clip(parque_geometry)
             vis_params = {"min": 0, "max": 2500, "gamma": 1.2}
-            map_id = corte.getMapId(vis_params)
-            # Retornamos 0.0 porque un mapa RGB no tiene un promedio de indicador
-            return map_id["tile_fetcher"].url_format, 0.0
+            return corte.getMapId(vis_params)["tile_fetcher"].url_format, 0.0
 
-        # 2. NDVI (Salud Vegetal)
         elif "NDVI" in capa_tipo:
             corte = imagen.normalizedDifference(["B8", "B4"]).rename("NDVI").clip(parque_geometry)
-            vis_params = {"min": 0.0, "max": 0.8, "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#d9ef8b", "#a6d96a", "#1a9850"]}
+            # Rango más estricto para forzar el contraste entre pasto seco y árbol sano
+            vis_params = {"min": 0.1, "max": 0.7, "palette": ["#d73027", "#fc8d59", "#fee08b", "#d9ef8b", "#91cf60", "#1a9850"]}
         
-        # 3. NDMI (Estrés Hídrico)
         elif "NDMI" in capa_tipo:
-            corte = imagen.normalizedDifference(["B8A", "B11"]).rename("NDMI").clip(parque_geometry)
-            vis_params = {"min": -0.2, "max": 0.4, "palette": ["#d73027", "#fc8d59", "#fee08b", "#e0f3f8", "#91bfdb", "#4575b4"]}
+            ndvi = imagen.normalizedDifference(["B8", "B4"])
+            # ENMASCARAMIENTO: Solo mostramos estrés hídrico donde el NDVI indica que SÍ hay vegetación
+            ndmi = imagen.normalizedDifference(["B8A", "B11"])
+            corte = ndmi.updateMask(ndvi.gt(0.15)).rename("NDMI").clip(parque_geometry)
+            # Paleta de Sequía (Rojo) a Ultra Hidratado (Azul oscuro)
+            vis_params = {"min": -0.05, "max": 0.3, "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#abd9e9", "#74add1", "#4575b4"]}
             
-        # 4. NDBI (Zonas Construidas / Asfalto)
         elif "NDBI" in capa_tipo:
             corte = imagen.normalizedDifference(["B11", "B8"]).rename("NDBI").clip(parque_geometry)
-            vis_params = {"min": -0.2, "max": 0.3, "palette": ["#1a9850", "#91cf60", "#d9ef8b", "#fee08b", "#fc8d59", "#d73027"]}
+            vis_params = {"min": -0.2, "max": 0.2, "palette": ["#1a9850", "#91cf60", "#d9ef8b", "#fee08b", "#fc8d59", "#d73027"]}
 
         map_id = corte.getMapId(vis_params)
         
-        # Calculamos el promedio SOLO si es un índice (NDVI, NDMI, NDBI)
         mean_stat = corte.reduceRegion(
             reducer=ee.Reducer.mean(),
             geometry=parque_geometry,
             scale=10
         ).getInfo()
 
-        promedio_val = list(mean_stat.values())[0] if mean_stat else 0.0
+        if mean_stat and list(mean_stat.values())[0] is not None:
+            promedio_val = list(mean_stat.values())[0]
+        else:
+            promedio_val = 0.0
+            
         return map_id["tile_fetcher"].url_format, promedio_val
 
     except Exception as e:
@@ -127,7 +129,6 @@ capa_seleccionada = st.sidebar.radio(
     ]
 )
 
-# Mapa Base OpenStreetMap
 m = folium.Map(
     location=[-33.4625, -70.6588],
     zoom_start=15,
@@ -149,9 +150,8 @@ if tile_url:
     col1.metric("Fuente de Datos", "Sentinel-2 (ESA)")
     col2.metric("Resolución Espacial", "10 metros / píxel")
     
-    # Lógica inteligente para mostrar el promedio numérico
     if "Normal" not in capa_seleccionada:
-        siglas = capa_seleccionada.split()[1] # Extrae "NDVI", "NDMI", etc.
+        siglas = capa_seleccionada.split()[1]
         col3.metric(f"Promedio {siglas}", f"{promedio_val:.3f}")
     else:
         col3.metric("Tipo de Vista", "Color Verdadero")
@@ -167,9 +167,32 @@ else:
         popup="Polígono Objetivo: Parque O'Higgins"
     ).add_to(m)
 
+# El parámetro key asegura que el mapa se actualice al cambiar el filtro
 st_folium(m, width="100%", height=550, key=capa_seleccionada)
 
+# ---------------------------------------------------------
+# 5. Leyenda y Diccionario de Datos
+# ---------------------------------------------------------
 st.markdown("---")
-st.caption("EcoRastro B2G | Sistema de Apoyo a la Toma de Decisiones para la Estrategia de Corredores Verdes (GORE / Municipalidad de Santiago).")
-
+with st.expander("📖 Leyenda y Explicación de Indicadores (Haz clic para desplegar)"):
+    st.markdown("""
+    ### 🌳 NDVI (Índice de Salud Vegetal)
+    Mide el vigor, la densidad de las hojas y la capacidad de realizar fotosíntesis. 
+    * 🔴 **Rojo / Naranja:** Tierra seca, suelo desnudo o vegetación muerta.
+    * 🟡 **Amarillo:** Pasto en mal estado o vegetación muy rala.
+    * 🟢 **Verde Oscuro:** Árboles frondosos y pasto muy sano (Alta cobertura de dosel).
     
+    ### 💧 NDMI (Índice de Estrés Hídrico)
+    *Esta capa usa inteligencia geoespacial para aislar el cemento y analizar **solo la vegetación viva**.*
+    * 🔴 **Rojo / Naranja:** Plantas con **fuerte déficit de agua** (Requieren riego priorizado para no morir).
+    * 🟡 **Amarillo / Celeste claro:** Nivel de humedad intermedio o normal.
+    * 🔵 **Azul Oscuro:** Árboles y áreas con **excelente hidratación** y reservas de agua internas.
+    
+    ### 🏢 NDBI (Zonas Construidas / Superficies Impermeables)
+    Identifica las áreas responsables de generar las "Islas de Calor Urbano".
+    * 🟢 **Verde:** Zonas naturales que mitigan la temperatura (sin cemento).
+    * 🟡 **Amarillo:** Zonas de uso mixto o suelo compactado.
+    * 🔴 **Rojo Oscuro:** Alta densidad de asfalto, hormigón y grandes techos (Focos donde el calor queda atrapado).
+    """)
+
+st.caption("EcoRastro B2G | Sistema de Apoyo a la Toma de Decisiones para la Estrategia de Corredores Verdes (GORE / Municipalidad de Santiago).")
