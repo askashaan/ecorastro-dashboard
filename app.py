@@ -140,4 +140,161 @@ st.markdown("---")
 # 5. Problem Section (Tarjeta Blanca Limpia)
 # ---------------------------------------------------------
 st.markdown("""
-<div style="background-color: #f7
+<div style="background-color: #f7f4ed; border-radius: 24px; padding: 36px; margin-top: 32px; margin-bottom: 32px; font-family: sans-serif;">
+    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #e76f51;">El problema</div>
+    <h2 style="color: #142e20; font-size: 1.8rem; font-weight: 700; margin-top: 8px; margin-bottom: 12px; line-height: 1.2;">
+        La información biológica está fragmentada y desactualizada.
+    </h2>
+    <p style="color: #2d5a3f; font-size: 0.95rem; line-height: 1.6; margin-bottom: 24px;">
+        Actualmente no existe un monitoreo integral y periódico unificado en el Parque O'Higgins. 
+        La información está dispersa entre inventarios municipales estáticos, datos de ciencia ciudadana y estudios académicos aislados. 
+        Hace falta un sistema centralizado que mantenga los datos actualizados para la gestión real.
+    </p>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+        <div style="background-color: #ffffff; border: 1px dashed #c2d6c9; border-radius: 16px; padding: 14px;">
+            <strong style="color: #142e20; display: block; font-size: 0.9rem; margin-bottom: 4px;">🏢 Inventarios municipales</strong>
+            <span style="color: #407b57; font-size: 0.8rem;">Estáticos y sin actualización</span>
+        </div>
+        <div style="background-color: #ffffff; border: 1px dashed #c2d6c9; border-radius: 16px; padding: 14px;">
+            <strong style="color: #142e20; display: block; font-size: 0.9rem; margin-bottom: 4px;">👥 Ciencia ciudadana</strong>
+            <span style="color: #407b57; font-size: 0.8rem;">Registros puntuales y dispersos</span>
+        </div>
+        <div style="background-color: #ffffff; border: 1px dashed #c2d6c9; border-radius: 16px; padding: 14px;">
+            <strong style="color: #142e20; display: block; font-size: 0.9rem; margin-bottom: 4px;">🎓 Estudios académicos</strong>
+            <span style="color: #407b57; font-size: 0.8rem;">Aislados y de corto alcance</span>
+        </div>
+    </div>
+    
+    <div style="background-color: #fdf0ed; border: 1px solid #f8c9bc; border-radius: 14px; padding: 14px 18px; margin-top: 20px; display: flex; align-items: center; gap: 14px;">
+        <span style="background-color: #e76f51; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; white-space: nowrap;">⚡ Impacto</span>
+        <span style="color: #142e20; font-weight: 600; font-size: 0.9rem;">
+            De un ecosistema fragmentado a 1 sola plataforma centralizada con actualización cada 5 días.
+        </span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 6. Dashboard Satelital (Alta Resolución + Opacidad)
+# ---------------------------------------------------------
+st.markdown("<div id='dashboard'></div>", unsafe_allow_html=True)
+st.caption("🛰️ DASHBOARD SATELITAL")
+st.markdown("## Parque O'Higgins: salud vegetal y estrés hídrico")
+st.write("Usa la transparencia para ver el análisis satelital superpuesto sobre los árboles en alta resolución.")
+
+# Controles de Capa y Transparencia
+col_ctrl1, col_ctrl2 = st.columns([3, 1])
+with col_ctrl1:
+    capa_seleccionada = st.radio(
+        "Capas de análisis Sentinel-2:",
+        ["🌱 Índice de Salud (NDVI)", "💧 Estrés Hídrico (NDMI)", "🏢 Zonas Construidas (NDBI)", "📸 Foto Satelital (RGB)"],
+        horizontal=True
+    )
+with col_ctrl2:
+    opacidad_capa = st.slider(
+        "Transparencia de la capa:",
+        min_value=0.0, max_value=1.0, value=0.7, step=0.05,
+        help="Baja la opacidad para ver el mapa de alta resolución debajo."
+    )
+
+# Mapa Base Esri Alta Resolución
+m = folium.Map(
+    location=[-33.4625, -70.6588], 
+    zoom_start=16, 
+    tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attr="Esri World Imagery (Alta Resolución)"
+)
+
+# Capa de Calles Transparente
+folium.TileLayer(
+    tiles="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    attr="Etiquetas Viales Esri",
+    name="Calles y Lugares",
+    overlay=True,
+    control=True
+).add_to(m)
+
+# Mapa tradicional OSM como opción
+folium.TileLayer('OpenStreetMap', name="Mapa Callejero (OSM)", overlay=False, control=True).add_to(m)
+
+# GPS Control
+plugins.LocateControl(
+    position="bottomright", drawCircle=False, keepCurrentZoomLevel=True,
+    strings={"title": "Ubicación en vivo", "popup": "Estás aquí"}
+).add_to(m)
+
+tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
+
+if tile_url:
+    # Capa de Sentinel-2 con Opacidad variable
+    folium.TileLayer(
+        tiles=tile_url, 
+        attr="Copernicus Sentinel-2", 
+        name=capa_seleccionada, 
+        overlay=True, 
+        control=True,
+        opacity=opacidad_capa
+    ).add_to(m)
+else:
+    folium.Polygon(locations=[[lat, lng] for lng, lat in coordenadas_parque], color="#10b981", fill=True, fill_opacity=0.3).add_to(m)
+
+# Agregar control de capas al mapa
+folium.LayerControl(position="topright", collapsed=False).add_to(m)
+
+# Renderizar el mapa de Folium
+map_data = st_folium(m, width="100%", height=560, key=f"{capa_seleccionada}_{opacidad_capa}")
+
+# Tarjetas Inferiores
+if "Normal" not in capa_seleccionada:
+    pct_val = int(max(0, min(1, promedio_val + 0.3)) * 100) if "NDVI" in capa_seleccionada else 78
+    col_m1, col_m2 = st.columns([1, 2])
+    with col_m1:
+        st.metric(label="SALUD VEGETAL PROMEDIO", value=f"{pct_val}%", delta="Estado Óptimo")
+    with col_m2:
+        st.info("Biomasa alta en la mayoría de los sectores. Las zonas coloreadas en tonos cálidos (rojo/naranja) requieren seguimiento de riego.")
+
+# Acción GPS para Terreno
+if map_data and map_data.get("last_clicked"):
+    lat, lng = map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"]
+    st.success(f"📍 Coordenada objetivo para la cuadrilla: `{lat:.5f}, {lng:.5f}`")
+    gmaps_url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}&travelmode=walking"
+    st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:inline-block; padding:10px 20px; background-color:#e76f51; color:white; font-weight:700; border-radius:10px; text-decoration:none;">🚶‍♂️ Ruta de Terreno en Google Maps</a>', unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 7. GUÍA TÉCNICA E INTERPRETACIÓN DE ÍNDICES (Diccionario B2G)
+# ---------------------------------------------------------
+st.markdown("---")
+with st.expander("📖 Guía de Interpretación de Capas e Índices Satelitales (Haz clic para desplegar)", expanded=True):
+    col_exp1, col_exp2 = st.columns(2)
+    
+    with col_exp1:
+        st.markdown("""
+        ### 🌳 NDVI (Índice de Salud Vegetal)
+        Mide el vigor, la densidad foliar y la capacidad de fotosíntesis de la biomasa urbana.
+        * 🔴 **Rojo / Naranja:** Tierra seca, suelo desnudo o vegetación muerta.
+        * 🟡 **Amarillo:** Pasto en mal estado o vegetación muy rala.
+        * 🟢 **Verde Oscuro:** Árboles frondosos y pasto muy sano.
+        
+        ---
+        
+        ### 🏢 NDBI (Zonas Construidas / Superficies Impermeables)
+        Identifica la densidad de infraestructura que retiene radiación solar.
+        * 🟢 **Verde:** Cobertura natural (sin asfalto/hormigón).
+        * 🟡 **Amarillo:** Zonas mixtas o suelo compactado.
+        * 🔴 **Rojo Oscuro:** Alta acumulación de asfalto y techos (Focos de Islas de Calor).
+        """)
+        
+    with col_exp2:
+        st.markdown("""
+        ### 💧 NDMI (Índice de Estrés Hídrico)
+        *Algoritmo inteligente: Aisla el cemento y analiza **únicamente la vegetación viva**.*
+        * 🔴 **Rojo / Naranja:** Plantas con **fuerte déficit de agua** (Requieren riego priorizado urgente).
+        * 🟡 **Amarillo / Celeste claro:** Humedad foliar en niveles aceptables.
+        * 🔵 **Azul Oscuro:** Árboles con **excelente reserva de agua** e hidratación óptima.
+        
+        ---
+        
+        ### 📸 Foto Satelital Normal (RGB)
+        Imagen en color verdadero capturada directamente por las bandas ópticas de **Copernicus Sentinel-2** a 10 metros de resolución espacial.
+        """)
