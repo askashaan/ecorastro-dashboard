@@ -15,44 +15,25 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilos CSS con alto contraste y diseño 1:1 con Bolt
-# ---------------------------------------------------------
-# PROBLEM SECTION (Estilizado limpio con HTML nativo seguro)
-# ---------------------------------------------------------
+# Estilos CSS con alto contraste y diseño 1:1 con Bolt (Restaurado)
 st.markdown("""
-<div style="background-color: #f7f4ed; border-radius: 24px; padding: 36px; margin-top: 32px; margin-bottom: 32px; font-family: sans-serif;">
-    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #e76f51;">El problema</div>
-    <h2 style="color: #142e20; font-size: 1.8rem; font-weight: 700; margin-top: 8px; margin-bottom: 12px; line-height: 1.2;">
-        La información biológica está fragmentada y desactualizada.
-    </h2>
-    <p style="color: #2d5a3f; font-size: 0.95rem; line-height: 1.6; margin-bottom: 24px;">
-        Actualmente no existe un monitoreo integral y periódico unificado en el Parque O'Higgins. 
-        La información está dispersa entre inventarios municipales estáticos, datos de ciencia ciudadana y estudios académicos aislados. 
-        Hace falta un sistema centralizado que mantenga los datos actualizados para la gestión real.
-    </p>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; }
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-        <div style="background-color: #ffffff; border: 1px dashed #c2d6c9; border-radius: 16px; padding: 14px;">
-            <strong style="color: #142e20; display: block; font-size: 0.9rem; margin-bottom: 4px;">🏢 Inventarios municipales</strong>
-            <span style="color: #407b57; font-size: 0.8rem;">Estáticos y sin actualización</span>
-        </div>
-        <div style="background-color: #ffffff; border: 1px dashed #c2d6c9; border-radius: 16px; padding: 14px;">
-            <strong style="color: #142e20; display: block; font-size: 0.9rem; margin-bottom: 4px;">👥 Ciencia ciudadana</strong>
-            <span style="color: #407b57; font-size: 0.8rem;">Registros puntuales y dispersos</span>
-        </div>
-        <div style="background-color: #ffffff; border: 1px dashed #c2d6c9; border-radius: 16px; padding: 14px;">
-            <strong style="color: #142e20; display: block; font-size: 0.9rem; margin-bottom: 4px;">🎓 Estudios académicos</strong>
-            <span style="color: #407b57; font-size: 0.8rem;">Aislados y de corto alcance</span>
-        </div>
-    </div>
+    .stApp { background-color: #0d1f15 !important; color: #f7f4ed !important; }
+    #MainMenu, footer, header { visibility: hidden; }
+
+    .bolt-nav { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background-color: #0d1f15; border-bottom: 1px solid rgba(247, 244, 237, 0.1); margin-bottom: 32px; }
+    .bolt-logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.2rem; color: #f7f4ed; }
+    .bolt-btn-nav { background-color: #e76f51; color: #ffffff !important; padding: 8px 20px; border-radius: 9999px; font-weight: 600; font-size: 0.875rem; text-decoration: none; }
     
-    <div style="background-color: #fdf0ed; border: 1px solid #f8c9bc; border-radius: 14px; padding: 14px 18px; margin-top: 20px; display: flex; align-items: center; gap: 14px;">
-        <span style="background-color: #e76f51; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; white-space: nowrap;">⚡ Impacto</span>
-        <span style="color: #142e20; font-weight: 600; font-size: 0.9rem;">
-            De un ecosistema fragmentado a 1 sola plataforma centralizada con actualización cada 5 días.
-        </span>
-    </div>
-</div>
+    .hero-title { font-size: 3rem; font-weight: 700; color: #f7f4ed; line-height: 1.1; margin-bottom: 16px; }
+    .hero-subtitle { color: rgba(247, 244, 237, 0.8); font-size: 1.125rem; max-width: 650px; line-height: 1.6; margin-bottom: 24px; }
+    .badge-pill { display: inline-flex; align-items: center; gap: 6px; background-color: rgba(247, 244, 237, 0.1); border: 1px solid rgba(247, 244, 237, 0.2); padding: 4px 14px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; color: #f7f4ed; margin-bottom: 16px; }
+    
+    div[data-testid="stRadio"] label { color: #f7f4ed !important; }
+</style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
@@ -60,12 +41,8 @@ st.markdown("""
 # ---------------------------------------------------------
 st.markdown("""
 <div class="bolt-nav">
-    <div class="bolt-logo">
-        🌱 EcoRastro
-    </div>
-    <div>
-        <a href="#dashboard" class="bolt-btn-nav">Ver Dashboard</a>
-    </div>
+    <div class="bolt-logo">🌱 EcoRastro</div>
+    <div><a href="#dashboard" class="bolt-btn-nav">Ver Dashboard</a></div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -163,116 +140,4 @@ st.markdown("---")
 # 5. Problem Section (Tarjeta Blanca Limpia)
 # ---------------------------------------------------------
 st.markdown("""
-<div class="problem-box">
-    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #e76f51;">El problema</div>
-    <h2>La información biológica está fragmentada y desactualizada.</h2>
-    <p>
-        Currently, there is no unified periodic monitoring in Parque O'Higgins. Information is scattered across static municipal inventories, citizen science, and isolated studies.
-    </p>
-    
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 24px;">
-        <div class="source-card">
-            <strong>🏢 Inventarios municipales</strong>
-            <span>Estáticos y sin actualización</span>
-        </div>
-        <div class="source-card">
-            <strong>👥 Ciencia ciudadana</strong>
-            <span>Registros puntuales y dispersos</span>
-        </div>
-        <div class="source-card">
-            <strong>🎓 Estudios académicos</strong>
-            <span>Aislados y de corto alcance</span>
-        </div>
-    </div>
-    
-    <div class="impact-banner">
-        <span class="impact-badge">Impacto</span>
-        <span class="impact-text">De un ecosistema fragmentado a 1 sola plataforma centralizada con actualización cada 5 días.</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# 6. Dashboard Satelital (Réplica Imagen 2)
-# ---------------------------------------------------------
-st.markdown("<div id='dashboard'></div>", unsafe_allow_html=True)
-st.caption("🛰️ DASHBOARD SATELITAL")
-st.markdown("## Parque O'Higgins: salud vegetal y estrés hídrico")
-st.write("Cambia entre capas para leer el estado de la vegetación o la disponibilidad de agua del parque.")
-
-capa_seleccionada = st.radio(
-    "Capas de análisis:",
-    ["🌱 Índice de Salud (NDVI)", "💧 Estrés Hídrico (NDMI)", "🏢 Zonas Construidas (NDBI)", "📸 Foto Satelital (RGB)"],
-    horizontal=True
-)
-
-m = folium.Map(location=[-33.4625, -70.6588], zoom_start=15, tiles="OpenStreetMap")
-
-plugins.LocateControl(
-    position="bottomright", drawCircle=False, keepCurrentZoomLevel=True,
-    strings={"title": "Ubicación en vivo", "popup": "Estás aquí"}
-).add_to(m)
-
-tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
-
-if tile_url:
-    folium.TileLayer(tiles=tile_url, attr="Copernicus Sentinel-2", name=capa_seleccionada, overlay=True, control=True).add_to(m)
-else:
-    folium.Polygon(locations=[[lat, lng] for lng, lat in coordenadas_parque], color="#10b981", fill=True, fill_opacity=0.3).add_to(m)
-
-# Mapa con altura ajustada
-map_data = st_folium(m, width="100%", height=520, key=capa_seleccionada)
-
-# Tarjeta inferior desplegable (Métricas Bolt style)
-if "Normal" not in capa_seleccionada:
-    pct_val = int(max(0, min(1, promedio_val + 0.3)) * 100) if "NDVI" in capa_seleccionada else 78
-    col_m1, col_m2 = st.columns([1, 2])
-    with col_m1:
-        st.metric(label="SALUD VEGETAL PROMEDIO", value=f"{pct_val}%", delta="Estado Óptimo")
-    with col_m2:
-        st.info("Biomasa alta en la mayoría de los sectores. Las zonas amarillas requieren seguimiento de riego.")
-
-# Acción de Clic GPS
-if map_data and map_data.get("last_clicked"):
-    lat, lng = map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"]
-    st.success(f"📍 Coordenada objetivo para la cuadrilla: `{lat:.5f}, {lng:.5f}`")
-    gmaps_url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}&travelmode=walking"
-    st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:inline-block; padding:10px 20px; background-color:#e76f51; color:white; font-weight:700; border-radius:10px; text-decoration:none;">🚶‍♂️ Ruta de Terreno en Google Maps</a>', unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# GUÍA TÉCNICA E INTERPRETACIÓN DE ÍNDICES (Diccionario B2G)
-# ---------------------------------------------------------
-st.markdown("---")
-with st.expander("📖 Guía de Interpretación de Capas e Índices Satelitales (Haz clic para desplegar)", expanded=True):
-    col_exp1, col_exp2 = st.columns(2)
-    
-    with col_exp1:
-        st.markdown("""
-        ### 🌳 NDVI (Índice de Salud Vegetal)
-        Mide el vigor, la densidad foliar y la capacidad de fotosíntesis de la biomasa urbana.
-        * 🔴 **Rojo / Naranja:** Tierra seca, suelo desnudo o vegetación muerta.
-        * 🟡 **Amarillo:** Pasto en mal estado o vegetación muy rala.
-        * 🟢 **Verde Oscuro:** Árboles frondosos y pasto muy sano.
-        
-        ---
-        
-        ### 🏢 NDBI (Zonas Construidas / Superficies Impermeables)
-        Identifica la densidad de infraestructura que retiene radiación solar.
-        * 🟢 **Verde:** Cobertura natural (sin asfalto/hormigón).
-        * 🟡 **Amarillo:** Zonas mixtas o suelo compactado.
-        * 🔴 **Rojo Oscuro:** Alta acumulación de asfalto y techos (Focos de Islas de Calor).
-        """)
-        
-    with col_exp2:
-        st.markdown("""
-        ### 💧 NDMI (Índice de Estrés Hídrico)
-        *Algoritmo inteligente: Aisla el cemento y analiza **únicamente la vegetación viva**.*
-        * 🔴 **Rojo / Naranja:** Plantas con **fuerte déficit de agua** (Requieren riego priorizado urgente).
-        * 🟡 **Amarillo / Celeste claro:** Humedad foliar en niveles aceptables.
-        * 🔵 **Azul Oscuro:** Árboles con **excelente reserva de agua** e hidratación óptima.
-        
-        ---
-        
-        ### 📸 Foto Satelital Normal (RGB)
-        Imagen en color verdadero capturada directamente por las bandas ópticas de **Copernicus Sentinel-2** a 10 metros de resolución espacial.
-        """)
+<div style="background-color: #f7
