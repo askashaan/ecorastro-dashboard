@@ -117,18 +117,14 @@ def cargar_arboles_geojson(filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
             for feature in data.get('features', []):
-                # Filtramos solo los puntos (árboles individuales)
                 if feature['geometry']['type'] == 'Point':
                     coords = feature['geometry']['coordinates']
                     props = feature['properties']
-                    # Verificamos si es una palma chilena o guardamos todo
-                    especie = props.get('species', 'Árbol sin especificar')
-                    etapa = props.get('life_cycle', 'Desconocida')
                     arboles.append({
                         'lat': coords[1],
                         'lng': coords[0],
-                        'especie': especie,
-                        'etapa': etapa
+                        'especie': props.get('species', 'Árbol sin especificar'),
+                        'etapa': props.get('life_cycle', 'Desconocida')
                     })
     return arboles
 
@@ -163,7 +159,7 @@ with col_h3:
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 5. Problem Section (Tarjeta Blanca Limpia)
+# 5. Problem Section (Corrección del HTML)
 # ---------------------------------------------------------
 st.markdown("""
 <div style="background-color: #f7f4ed; border-radius: 24px; padding: 36px; margin-top: 32px; margin-bottom: 32px; font-family: sans-serif;">
@@ -172,11 +168,8 @@ st.markdown("""
         La información biológica está fragmentada y desactualizada.
     </h2>
     <p style="color: #2d5a3f; font-size: 0.95rem; line-height: 1.6; margin-bottom: 24px;">
-        Actualmente no existe un monitoreo integral y periódico unificado en el Parque O'Higgins. 
-        La información está dispersa entre inventarios municipales estáticos, datos de ciencia ciudadana y estudios académicos aislados. 
-        Hace falta un sistema centralizado que mantenga los datos actualizados para la gestión real.
+        Actualmente no existe un monitoreo integral y periódico unificado en el Parque O'Higgins. La información está dispersa entre inventarios municipales estáticos, datos de ciencia ciudadana y estudios académicos aislados. Hace falta un sistema centralizado que mantenga los datos actualizados para la gestión real.
     </p>
-    
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
         <div style="background-color: #ffffff; border: 1px dashed #c2d6c9; border-radius: 16px; padding: 14px;">
             <strong style="color: #142e20; display: block; font-size: 0.9rem; margin-bottom: 4px;">🏢 Inventarios municipales</strong>
@@ -191,7 +184,6 @@ st.markdown("""
             <span style="color: #407b57; font-size: 0.8rem;">Aislados y de corto alcance</span>
         </div>
     </div>
-    
     <div style="background-color: #fdf0ed; border: 1px solid #f8c9bc; border-radius: 14px; padding: 14px 18px; margin-top: 20px; display: flex; align-items: center; gap: 14px;">
         <span style="background-color: #e76f51; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; white-space: nowrap;">⚡ Impacto</span>
         <span style="color: #142e20; font-weight: 600; font-size: 0.9rem;">
@@ -241,15 +233,6 @@ folium.TileLayer(
     control=True
 ).add_to(m)
 
-# Mapa tradicional OSM como opción
-folium.TileLayer('OpenStreetMap', name="Mapa Callejero (OSM)", overlay=False, control=True).add_to(m)
-
-# GPS Control
-plugins.LocateControl(
-    position="bottomright", drawCircle=False, keepCurrentZoomLevel=True,
-    strings={"title": "Ubicación en vivo", "popup": "Estás aquí"}
-).add_to(m)
-
 tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
 
 if tile_url:
@@ -265,36 +248,32 @@ if tile_url:
 else:
     folium.Polygon(locations=[[lat, lng] for lng, lat in coordenadas_parque], color="#10b981", fill=True, fill_opacity=0.3).add_to(m)
 
-# --- NUEVO: Agregar marcadores de los árboles sobre las capas satelitales ---
+# --- Agregar marcadores de los árboles separando Palmas de Otros ---
 lista_arboles = cargar_arboles_geojson('arboles.geojson')
 
 if lista_arboles:
-    # 1. Crear dos grupos de capas independientes
     grupo_palmas = folium.FeatureGroup(name="🌴 Palmas Chilenas", show=True)
     grupo_otros = folium.FeatureGroup(name="🌳 Otros Árboles (No identificados)", show=True)
     
     for arbol in lista_arboles:
-        # Identificar si es palma chilena (ajusta el texto según venga en tu GeoJSON)
         especie_str = str(arbol.get('especie', '')).lower()
         es_palma = "palma" in especie_str or "jubaea" in especie_str
         
-        # 2. Configurar la estética según el tipo de árbol
         if es_palma:
-            fill_color = "#10b981"  # Verde esmeralda para palmas
-            radius = 6              # Tamaño destacado
+            fill_color = "#10b981"  
+            radius = 6              
             fill_opacity = 0.9
             grupo_destino = grupo_palmas
             nombre_mostrar = "Palma Chilena"
             icono = "🌴"
         else:
-            fill_color = "#f39a77"  # Naranja suave para otros
-            radius = 3              # Más pequeños para evitar saturación visual
-            fill_opacity = 0.45     # Semitransparentes
+            fill_color = "#f39a77"  
+            radius = 3              
+            fill_opacity = 0.45     
             grupo_destino = grupo_otros
             nombre_mostrar = arbol.get('especie', 'Especie no identificada').title()
             icono = "🌳"
             
-        # 3. Diseño HTML del Popup (Mini-tarjeta moderna)
         html_popup = f"""
         <div style="font-family: 'Plus Jakarta Sans', sans-serif; min-width: 160px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <div style="background-color: {fill_color}; color: white; padding: 6px 12px; font-weight: bold; font-size: 13px; border-bottom: 1px solid rgba(0,0,0,0.1);">
@@ -311,24 +290,20 @@ if lista_arboles:
             location=[arbol['lat'], arbol['lng']],
             radius=radius,
             popup=folium.Popup(html_popup, max_width=250),
-            color="#ffffff",        # Borde blanco fino para separarlos visualmente
+            color="#ffffff",        
             weight=0.8,
             fill=True,
             fill_color=fill_color,
             fill_opacity=fill_opacity
         ).add_to(grupo_destino)
         
-    # Añadir ambos grupos al mapa
     grupo_palmas.add_to(m)
     grupo_otros.add_to(m)
-else:
-    st.warning("No se encontraron datos en el archivo GeoJSON.")
 
-# Agregar control de capas al mapa
 folium.LayerControl(position="topright", collapsed=False).add_to(m)
 
 # Renderizar el mapa de Folium
-map_data = st_folium(m, width="100%", height=560, key=f"{capa_seleccionada}_{opacidad_capa}")
+st_folium(m, width="100%", height=560, key=f"{capa_seleccionada}_{opacidad_capa}")
 
 # Tarjetas Inferiores
 if "Normal" not in capa_seleccionada:
@@ -338,13 +313,6 @@ if "Normal" not in capa_seleccionada:
         st.metric(label="SALUD VEGETAL PROMEDIO", value=f"{pct_val}%", delta="Estado Óptimo")
     with col_m2:
         st.info("Biomasa alta en la mayoría de los sectores. Las zonas coloreadas en tonos cálidos (rojo/naranja) requieren seguimiento de riego.")
-
-# Acción GPS para Terreno
-if map_data and map_data.get("last_clicked"):
-    lat, lng = map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"]
-    st.success(f"📍 Coordenada objetivo para la cuadrilla: `{lat:.5f}, {lng:.5f}`")
-    gmaps_url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}&travelmode=walking"
-    st.markdown(f'<a href="{gmaps_url}" target="_blank" style="display:inline-block; padding:10px 20px; background-color:#e76f51; color:white; font-weight:700; border-radius:10px; text-decoration:none;">🚶‍♂️ Ruta de Terreno en Google Maps</a>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # 7. GUÍA TÉCNICA E INTERPRETACIÓN DE ÍNDICES (Diccionario B2G)
