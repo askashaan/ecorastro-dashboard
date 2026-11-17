@@ -266,30 +266,63 @@ else:
     folium.Polygon(locations=[[lat, lng] for lng, lat in coordenadas_parque], color="#10b981", fill=True, fill_opacity=0.3).add_to(m)
 
 # --- NUEVO: Agregar marcadores de los árboles sobre las capas satelitales ---
-lista_arboles = cargar_arboles_geojson('arboles.geojson') # Asegúrate que el archivo se llama así
+lista_arboles = cargar_arboles_geojson('arboles.geojson')
+
 if lista_arboles:
-    grupo_arboles = folium.FeatureGroup(name="Catastro Palmas Chilenas")
+    # 1. Crear dos grupos de capas independientes
+    grupo_palmas = folium.FeatureGroup(name="🌴 Palmas Chilenas", show=True)
+    grupo_otros = folium.FeatureGroup(name="🌳 Otros Árboles (No identificados)", show=True)
+    
     for arbol in lista_arboles:
+        # Identificar si es palma chilena (ajusta el texto según venga en tu GeoJSON)
+        especie_str = str(arbol.get('especie', '')).lower()
+        es_palma = "palma" in especie_str or "jubaea" in especie_str
+        
+        # 2. Configurar la estética según el tipo de árbol
+        if es_palma:
+            fill_color = "#10b981"  # Verde esmeralda para palmas
+            radius = 6              # Tamaño destacado
+            fill_opacity = 0.9
+            grupo_destino = grupo_palmas
+            nombre_mostrar = "Palma Chilena"
+            icono = "🌴"
+        else:
+            fill_color = "#f39a77"  # Naranja suave para otros
+            radius = 3              # Más pequeños para evitar saturación visual
+            fill_opacity = 0.45     # Semitransparentes
+            grupo_destino = grupo_otros
+            nombre_mostrar = arbol.get('especie', 'Especie no identificada').title()
+            icono = "🌳"
+            
+        # 3. Diseño HTML del Popup (Mini-tarjeta moderna)
         html_popup = f"""
-        <div style="font-family:sans-serif; font-size:12px;">
-            <b>Especie:</b> {arbol['especie']}<br>
-            <b>Etapa:</b> {arbol['etapa']}<br>
-            <b>Lat/Lng:</b> {arbol['lat']:.5f}, {arbol['lng']:.5f}
+        <div style="font-family: 'Plus Jakarta Sans', sans-serif; min-width: 160px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div style="background-color: {fill_color}; color: white; padding: 6px 12px; font-weight: bold; font-size: 13px; border-bottom: 1px solid rgba(0,0,0,0.1);">
+                {icono} {nombre_mostrar}
+            </div>
+            <div style="padding: 10px 12px; background-color: #ffffff; color: #333333;">
+                <p style="margin: 0 0 6px 0; font-size: 12px;"><b>Etapa:</b> {arbol['etapa']}</p>
+                <p style="margin: 0; font-size: 10px; color: #7f8c8d;">📍 Lat: {arbol['lat']:.5f}<br>📍 Lng: {arbol['lng']:.5f}</p>
+            </div>
         </div>
         """
+        
         folium.CircleMarker(
             location=[arbol['lat'], arbol['lng']],
-            radius=6,
-            popup=folium.Popup(html_popup, max_width=200),
-            color="#ffffff",
-            weight=1.5,
+            radius=radius,
+            popup=folium.Popup(html_popup, max_width=250),
+            color="#ffffff",        # Borde blanco fino para separarlos visualmente
+            weight=0.8,
             fill=True,
-            fill_color="#e76f51", # Naranja corporativo EcoRastro
-            fill_opacity=0.9
-        ).add_to(grupo_arboles)
-    grupo_arboles.add_to(m)
+            fill_color=fill_color,
+            fill_opacity=fill_opacity
+        ).add_to(grupo_destino)
+        
+    # Añadir ambos grupos al mapa
+    grupo_palmas.add_to(m)
+    grupo_otros.add_to(m)
 else:
-    st.warning("No se encontró el archivo 'arboles.geojson' o no hay puntos válidos. Sube el archivo a la misma ruta del script para ver el catastro.")
+    st.warning("No se encontraron datos en el archivo GeoJSON.")
 
 # Agregar control de capas al mapa
 folium.LayerControl(position="topright", collapsed=False).add_to(m)
