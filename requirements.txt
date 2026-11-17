@@ -3,3 +3,4 @@ folium
 streamlit-folium
 numpy
 earthengine-api
+google-generativeai
