@@ -187,7 +187,7 @@ st.markdown("""
     <div style="background-color: #fdf0ed; border: 1px solid #f8c9bc; border-radius: 14px; padding: 14px 18px; margin-top: 20px; display: flex; align-items: center; gap: 14px;">
         <span style="background-color: #e76f51; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; white-space: nowrap;">⚡ Impacto</span>
         <span style="color: #142e20; font-weight: 600; font-size: 0.9rem;">
-            De un ecosistema fragmentado a 1 sola plataforma centralizada con actualización cada 5 días.
+            De un ecosistema fragmentado a 1 sola plataforma centralizada con actualización constante.
         </span>
     </div>
 </div>
