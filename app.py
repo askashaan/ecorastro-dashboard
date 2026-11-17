@@ -4,6 +4,7 @@ from folium import plugins
 from streamlit_folium import st_folium
 import ee
 import json
+import os
 
 # ---------------------------------------------------------
 # 1. Configuración de Página & Tema Visual Bolt
@@ -107,6 +108,31 @@ def obtener_capa_satelital(capa_tipo):
         return None, 0.0
 
 # ---------------------------------------------------------
+# FUNCION NUEVA: Cargar árboles del GeoJSON
+# ---------------------------------------------------------
+@st.cache_data
+def cargar_arboles_geojson(filepath):
+    arboles = []
+    if os.path.exists(filepath):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            for feature in data.get('features', []):
+                # Filtramos solo los puntos (árboles individuales)
+                if feature['geometry']['type'] == 'Point':
+                    coords = feature['geometry']['coordinates']
+                    props = feature['properties']
+                    # Verificamos si es una palma chilena o guardamos todo
+                    especie = props.get('species', 'Árbol sin especificar')
+                    etapa = props.get('life_cycle', 'Desconocida')
+                    arboles.append({
+                        'lat': coords[1],
+                        'lng': coords[0],
+                        'especie': especie,
+                        'etapa': etapa
+                    })
+    return arboles
+
+# ---------------------------------------------------------
 # 4. Hero Section
 # ---------------------------------------------------------
 st.markdown("""
@@ -176,10 +202,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 6. Dashboard Satelital (Alta Resolución + Opacidad)
+# 6. Dashboard Satelital (Alta Resolución + Opacidad + Catastro)
 # ---------------------------------------------------------
 st.markdown("<div id='dashboard'></div>", unsafe_allow_html=True)
-st.caption("🛰️ DASHBOARD SATELITAL")
+st.caption("🛰️ DASHBOARD SATELITAL & AUDITORÍA DE CATASTRO")
 st.markdown("## Parque O'Higgins: salud vegetal y estrés hídrico")
 st.write("Usa la transparencia para ver el análisis satelital superpuesto sobre los árboles en alta resolución.")
 
@@ -238,6 +264,32 @@ if tile_url:
     ).add_to(m)
 else:
     folium.Polygon(locations=[[lat, lng] for lng, lat in coordenadas_parque], color="#10b981", fill=True, fill_opacity=0.3).add_to(m)
+
+# --- NUEVO: Agregar marcadores de los árboles sobre las capas satelitales ---
+lista_arboles = cargar_arboles_geojson('arboles.geojson') # Asegúrate que el archivo se llama así
+if lista_arboles:
+    grupo_arboles = folium.FeatureGroup(name="Catastro Palmas Chilenas")
+    for arbol in lista_arboles:
+        html_popup = f"""
+        <div style="font-family:sans-serif; font-size:12px;">
+            <b>Especie:</b> {arbol['especie']}<br>
+            <b>Etapa:</b> {arbol['etapa']}<br>
+            <b>Lat/Lng:</b> {arbol['lat']:.5f}, {arbol['lng']:.5f}
+        </div>
+        """
+        folium.CircleMarker(
+            location=[arbol['lat'], arbol['lng']],
+            radius=6,
+            popup=folium.Popup(html_popup, max_width=200),
+            color="#ffffff",
+            weight=1.5,
+            fill=True,
+            fill_color="#e76f51", # Naranja corporativo EcoRastro
+            fill_opacity=0.9
+        ).add_to(grupo_arboles)
+    grupo_arboles.add_to(m)
+else:
+    st.warning("No se encontró el archivo 'arboles.geojson' o no hay puntos válidos. Sube el archivo a la misma ruta del script para ver el catastro.")
 
 # Agregar control de capas al mapa
 folium.LayerControl(position="topright", collapsed=False).add_to(m)
