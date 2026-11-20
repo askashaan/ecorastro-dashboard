@@ -320,17 +320,10 @@ col_time1, col_time2 = st.columns([2, 1])
 with col_time1:
     opciones_tiempo = {
         "🛰️ Captura más reciente (Hoy)": 0,
-        "⏪ Hace 5 días": 5,
-        "⏪ Hace 10 días": 10,
-        "⏪ Hace 15 días": 15,
-        "⏪ Hace 20 días": 20,
-        "⏪ Hace 25 días": 25,
-        "⏪ Hace 1 mes (30 días)": 30,
-        "⏪ Hace 2 meses": 60,
-        "⏪ Hace 3 meses": 90,
-        "⏪ Hace 6 meses": 180,
-        "⏪ Hace 1 año": 365,
-        "📅 Elegir fecha exacta en el calendario...": -1
+        "⏪ Hace 5 días": 5, "⏪ Hace 10 días": 10, "⏪ Hace 15 días": 15,
+        "⏪ Hace 20 días": 20, "⏪ Hace 25 días": 25, "⏪ Hace 1 mes (30 días)": 30,
+        "⏪ Hace 2 meses": 60, "⏪ Hace 3 meses": 90, "⏪ Hace 6 meses": 180,
+        "⏪ Hace 1 año": 365, "📅 Elegir fecha exacta en el calendario...": -1
     }
     seleccion_tiempo = st.selectbox("🕒 Viajar en el tiempo (Comparación Histórica):", list(opciones_tiempo.keys()))
 
@@ -420,13 +413,9 @@ if map_data and map_data.get("last_object_clicked"):
         
         with st.spinner("Descargando cuadrante HD y ejecutando cruce multimodal con IA..."):
             datos_historicos, tile_hd = generar_tiling_y_metricas(arbol_seleccionado['lat'], arbol_seleccionado['lng'], fecha_objetivo)
-            
-            diagnostico = generar_diagnostico_hibrido(
-                arbol_seleccionado['especie'], arbol_seleccionado['etapa'], arbol_seleccionado['id'], datos_historicos, fecha_real, tile_hd
-            )
+            diagnostico = generar_diagnostico_hibrido(arbol_seleccionado['especie'], arbol_seleccionado['etapa'], arbol_seleccionado['id'], datos_historicos, fecha_real, tile_hd)
             
             col_vis, col_datos = st.columns([1, 2.2])
-            
             with col_vis:
                 st.caption("🎯 **Contexto Visual de Alta Resolución**")
                 if tile_hd:
@@ -442,7 +431,8 @@ if map_data and map_data.get("last_object_clicked"):
                 col_ia3.metric(f"NDMI ({fecha_real})", datos_historicos['NDMI_hoy'])
                 
                 st.success("Análisis Híbrido (Visión + Índices Infrarrojos) completado")
-                st.markdown(f"> **🤖 Prescripción y Litros Sugeridos:** {diagnostico}")
+                st.markdown(f"> **🤖 Prescripción Operativa:** {diagnostico}")
+
 # ---------------------------------------------------------
 # 9. Tarjetas Inferiores Generales
 # ---------------------------------------------------------
@@ -455,39 +445,56 @@ if "Normal" not in capa_seleccionada:
         st.info("Biomasa alta en la mayoría de los sectores. Las zonas coloreadas en tonos cálidos (rojo/naranja) requieren seguimiento de riego.")
 
 # ---------------------------------------------------------
-# 10. GUÍA TÉCNICA E INTERPRETACIÓN DE ÍNDICES (Diccionario B2G)
+# 10. GUÍA TÉCNICA E INTERPRETACIÓN CIENTÍFICA B2G
 # ---------------------------------------------------------
 st.markdown("---")
-with st.expander("📖 Guía de Interpretación de Capas e Índices Satelitales (Haz clic para desplegar)", expanded=True):
-    col_exp1, col_exp2 = st.columns(2)
+st.markdown("### 📖 Guía Científica de Algoritmos e Índices (Copernicus Sentinel-2)")
+st.write("Esta sección documenta los parámetros hiperespectrales utilizados por el motor de Earth Engine para evaluar la biomasa urbana.")
+
+tab_ndvi, tab_ndmi, tab_ndbi = st.tabs(["🌳 Índice NDVI (Salud Vegetal)", "💧 Índice NDMI (Estrés Hídrico)", "🏢 Índice NDBI (Zonas Construidas)"])
+
+with tab_ndvi:
+    st.markdown("""
+    #### **NDVI (Normalized Difference Vegetation Index)**
+    El NDVI es el estándar global para cuantificar el vigor y la densidad de la vegetación. Utiliza la diferencia entre la luz infrarroja cercana (que la vegetación sana refleja fuertemente) y la luz roja (que la clorofila absorbe para la fotosíntesis).
     
-    with col_exp1:
-        st.markdown("""
-        ### 🌳 NDVI (Índice de Salud Vegetal)
-        Mide el vigor, la densidad foliar y la capacidad de fotosíntesis de la biomasa urbana.
-        * 🔴 **Rojo / Naranja:** Tierra seca, suelo desnudo o vegetación muerta.
-        * 🟡 **Amarillo:** Pasto en mal estado o vegetación muy rala.
-        * 🟢 **Verde Oscuro:** Árboles frondosos y pasto muy sano.
-        
-        ---
-        
-        ### 🏢 NDBI (Zonas Construidas / Superficies Impermeables)
-        Identifica la densidad de infraestructura que retiene radiación solar.
-        * 🟢 **Verde:** Cobertura natural (sin asfalto/hormigón).
-        * 🟡 **Amarillo:** Zonas mixtas o suelo compactado.
-        * 🔴 **Rojo Oscuro:** Alta acumulación de asfalto y techos (Focos de Islas de Calor).
-        """)
-        
-    with col_exp2:
-        st.markdown("""
-        ### 💧 NDMI (Índice de Estrés Hídrico)
-        *Algoritmo inteligente: Aisla el cemento y analiza **únicamente la vegetación viva**.*
-        * 🔴 **Rojo / Naranja:** Plantas con **fuerte déficit de agua** (Requieren riego priorizado urgente).
-        * 🟡 **Amarillo / Celeste claro:** Humedad foliar en niveles aceptables.
-        * 🔵 **Azul Oscuro:** Árboles con **excelente reserva de agua** e hidratación óptima.
-        
-        ---
-        
-        ### 📸 Foto Satelital Normal (RGB)
-        Imagen en color verdadero capturada directamente por las bandas ópticas de **Copernicus Sentinel-2** a 10 metros de resolución espacial.
-        """)
+    **Fórmula Matemática:** `(NIR - RED) / (NIR + RED)`
+    
+    **Escala de Valores y Diagnóstico:**
+    * 🔲 **-1.0 a 0.0:** Cuerpos de agua, nieve o estructuras urbanas densas (cemento/asfalto).
+    * 🟫 **0.0 a 0.2:** Suelo desnudo, tierra seca, rocas o arena.
+    * 🟨 **0.2 a 0.4:** Vegetación rala, pasto muy seco, arbustos o árboles en estado de latencia/estrés severo.
+    * 🟩 **0.4 a 0.6:** Vegetación moderada. Típico de árboles jóvenes, pasto en transición o dosel arbóreo abierto.
+    * 🌲 **0.6 a 0.8:** Dosel arbóreo denso y sano. Alta concentración de clorofila y actividad fotosintética vigorosa.
+    * 🌳 **0.8 a 1.0:** Excepcionalmente vigoroso (común en selvas tropicales o cultivos hiper-irrigados).
+    """)
+
+with tab_ndmi:
+    st.markdown("""
+    #### **NDMI (Normalized Difference Moisture Index)**
+    El NDMI es altamente sensible al contenido de agua líquida en las hojas y el dosel arbóreo. Es el índice más confiable para la detección temprana de sequías y la programación de riego inteligente, ya que penetra más allá de la simple "coloración verde" (NDVI).
+    
+    **Fórmula Matemática:** `(NIR - SWIR) / (NIR + SWIR)`
+    *(El sensor SWIR o Infrarrojo de Onda Corta es altamente absorbido por el agua).*
+    
+    **Escala de Valores y Diagnóstico:**
+    * 🟥 **-1.0 a -0.2:** Déficit hídrico crítico. Ausencia total de humedad foliar o suelo desnudo extremo.
+    * 🟧 **-0.2 a 0.0:** Estrés hídrico alto. La planta está perdiendo agua rápidamente. **(Requiere riego de emergencia)**.
+    * 🟨 **0.0 a 0.2:** Estrés hídrico moderado a leve. Riego de mantenimiento sugerido.
+    * 🟦 **0.2 a 0.4:** Hidratación óptima. Dosel con excelente reserva de agua.
+    * 💦 **0.4 a 1.0:** Saturación de agua (puede indicar encharcamiento, anegamiento o lluvia reciente).
+    """)
+
+with tab_ndbi:
+    st.markdown("""
+    #### **NDBI (Normalized Difference Built-up Index)**
+    Diseñado para mapear áreas urbanas y superficies impermeables. Es fundamental para detectar **Islas de Calor Urbano**, ya que el asfalto y el concreto retienen una cantidad masiva de radiación térmica, afectando a los árboles circundantes.
+    
+    **Fórmula Matemática:** `(SWIR - NIR) / (SWIR + NIR)`
+    
+    **Escala de Valores y Diagnóstico:**
+    * 🟦 **-1.0 a -0.2:** Cuerpos de agua profundos.
+    * 🟩 **-0.2 a 0.0:** Cobertura vegetal densa. Actúa como regulador térmico (enfriamiento natural).
+    * 🟨 **0.0 a 0.2:** Zonas mixtas. Combinación de suelo, pasto y estructuras pequeñas (ej. senderos de parque).
+    * 🟥 **0.2 a 1.0:** Alta densidad constructiva. Asfalto continuo, edificios y techos. Estas zonas irradian calor extremo y aceleran la evaporación del agua en los árboles cercanos.
+    """)
