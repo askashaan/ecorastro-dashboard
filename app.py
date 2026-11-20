@@ -63,20 +63,22 @@ def init_earth_engine():
             service_account_info = json.loads(secret_val) if isinstance(secret_val, str) else dict(secret_val)
             
             client_email = service_account_info.get("client_email")
-            private_key = service_account_info.get("private_key")
+            # Limpieza de saltos de línea en la llave privada
+            private_key = service_account_info.get("private_key", "").replace("\\n", "\n")
             project_id = service_account_info.get("project_id")
             
             credentials = ee.ServiceAccountCredentials(client_email, key_data=private_key)
             ee.Initialize(credentials, project=project_id)
-            return True
+            return True, "OK"
         else:
             ee.Initialize()
-            return True
-    except Exception:
-        return False
+            return True, "OK"
+    except Exception as e:
+        return False, str(e)
 
-ee_status = init_earth_engine()
-
+ee_status, ee_error = init_earth_engine()
+if not ee_status:
+    st.error(f"🚨 Detalle del error de Earth Engine: {ee_error}")
 # Inicializar Cerebro IA (Gemini)
 has_ai = False
 if "GEMINI_API_KEY" in st.secrets:
