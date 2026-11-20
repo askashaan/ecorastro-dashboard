@@ -299,7 +299,25 @@ def generar_diagnostico_hibrido(especie, etapa, arbol_id, datos_satelitales, fec
         
     tendencia = "mejora" if variacion_ndvi >= 0 else "caída"
     return f"⚠️ Análisis Híbrido (ID #{arbol_id} - {especie}): Se detecta una {tendencia} de {abs(round(variacion_ndvi, 2))} en el vigor respecto a {datos_satelitales['fecha_previa']}. El índice NDMI ({ndmi}) indica: {accion}. **Prescripción operativa:** Aplicar **{litros_sugeridos} litros de agua semanales**."
-
+@st.cache_data
+def cargar_arboles_geojson(filepath):
+    arboles = {}
+    if os.path.exists(filepath):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            for idx, feature in enumerate(data.get('features', []), start=1):
+                if feature['geometry']['type'] == 'Point':
+                    coords = feature['geometry']['coordinates']
+                    props = feature['properties']
+                    llave = f"{round(coords[1], 4)}_{round(coords[0], 4)}"
+                    arboles[llave] = {
+                        'id': props.get('id', idx),
+                        'lat': coords[1],
+                        'lng': coords[0],
+                        'especie': props.get('species', 'Árbol sin especificar'),
+                        'etapa': props.get('life_cycle', 'Desconocida')
+                    }
+    return arboles
 # ---------------------------------------------------------
 # 5. Hero Section
 # ---------------------------------------------------------
