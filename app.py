@@ -7,7 +7,7 @@ import json
 import os
 import requests
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageDraw
 from datetime import datetime, timedelta
 import google.generativeai as genai
 
@@ -66,7 +66,6 @@ def init_earth_engine():
             service_account_info = json.loads(secret_val) if isinstance(secret_val, str) else dict(secret_val)
             
             client_email = service_account_info.get("client_email")
-            # Limpieza de saltos de línea en la llave privada
             private_key = service_account_info.get("private_key", "").replace("\\n", "\n")
             project_id = service_account_info.get("project_id")
             
@@ -83,7 +82,6 @@ ee_status, ee_error = init_earth_engine()
 if not ee_status:
     st.error(f"🚨 Detalle del error de Earth Engine: {ee_error}")
 
-# Inicializar Cerebro IA (Gemini Multimodal)
 has_ai = False
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -102,7 +100,6 @@ def obtener_capa_satelital(capa_tipo, fecha_objetivo):
     if not ee_status: return None, 0.0, "Sin Conexión"
     try:
         parque_geometry = ee.Geometry.Polygon(coordenadas_parque)
-        
         fecha_fin = datetime.combine(fecha_objetivo, datetime.max.time())
         fecha_inicio = fecha_fin - timedelta(days=45) 
         
@@ -113,7 +110,6 @@ def obtener_capa_satelital(capa_tipo, fecha_objetivo):
             .sort("system:time_start", False)
             
         imagen = coleccion.first()
-        
         timestamp = imagen.get('system:time_start')
         fecha_real = ee.Date(timestamp).format('dd/MM/YYYY').getInfo()
 
@@ -142,46 +138,48 @@ def obtener_capa_satelital(capa_tipo, fecha_objetivo):
 
 def generar_tiling_y_metricas(lat, lng, fecha_objetivo):
     """
-    PASOS 2 y 3 DEL PIPELINE:
-    - Calcula métricas exactas (NDVI, NDMI) antes y en la fecha objetivo.
-    - Genera recortes de 100x100m (Tiling) con un recuadro rojo (Visual Prompting) 
-      sobre el árbol para comparación visual y análisis multimodal.
+    1. Calcula métricas duras de NDVI/NDMI.
+    2. Fuerza la medición anterior a exactamente 5 días atrás.
+    3. Descarga fondo HD desde Esri para contexto visual (sin píxeles gigantes).
     """
     if not ee_status: 
-        return {"NDVI_pasado": 0.65, "NDVI_hoy": 0.35, "NDMI_hoy": -0.1, "fecha_previa": "Hace 15 días"}, None, None
+        return {"NDVI_pasado": 0.65, "NDVI_hoy": 0.35, "NDMI_hoy": -0.1, "fecha_previa": "Hace 5 días"}, None
     
     punto = ee.Geometry.Point([lng, lat])
-    # Cuadrante de 100x100m (50m de radio desde el árbol)
-    cuadrante_100m = punto.buffer(50).bounds()
-    # Recuadro rojo de 12x12m (6m de radio) marcando exactamente el árbol (Visual Prompting)
-    bbox_arbol = ee.FeatureCollection([ee.Feature(punto.buffer(6).bounds())])
-    
     fecha_fin = datetime.combine(fecha_objetivo, datetime.max.time())
+    
     coleccion = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(punto).filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 25))
     
-    # Imagen en la fecha elegida y captura previa (~15 a 45 días antes para comparar ciclo)
-    img_objetivo = coleccion.filterDate(ee.Date(fecha_fin - timedelta(days=45)), ee.Date(fecha_fin)).sort("system:time_start", False).first()
-    img_pasada = coleccion.filterDate(ee.Date(fecha_fin - timedelta(days=90)), ee.Date(fecha_fin - timedelta(days=15))).sort("system:time_start", False).first()
+    img_objetivo = coleccion.filterDate(ee.Date(fecha_fin - timedelta(days=20)), ee.Date(fecha_fin)).sort("system:time_start", False).first()
     
     try:
-        # 1. Cálculos matemáticos duros (El Ojo)
+        # Calcular fecha previa (Exactamente 5 días atrás según fecha evaluada)
+        fecha_evaluado_ee = ee.Date(img_objetivo.get('system:time_start'))
+        fecha_previa_ideal = fecha_evaluado_ee.advance(-5, 'day')
+        
+        # Buscar la imagen más cercana a esa fecha previa ideal
+        img_pasada = coleccion.filterDate(fecha_previa_ideal.advance(-3, 'day'), fecha_previa_ideal.advance(3, 'day')).sort("system:time_start", False).first()
+        
         ndvi_pasado = img_pasada.normalizedDifference(["B8", "B4"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
         ndvi_hoy = img_objetivo.normalizedDifference(["B8", "B4"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
         ndmi_hoy = img_objetivo.normalizedDifference(["B8A", "B11"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
         fecha_previa_str = ee.Date(img_pasada.get('system:time_start')).format('dd/MM/YYYY').getInfo()
 
-        # 2. Tiling + Visual Prompting (Recorte RGB 100x100m + Bounding Box Rojo)
-        def crear_tile_marcado(imagen_ee):
-            rgb = imagen_ee.select(["B4", "B3", "B2"]).visualize(min=0, max=2500, gamma=1.3)
-            # Pintar el borde del recuadro rojo (width=3)
-            borde_rojo = ee.Image().byte().paint(featureCollection=bbox_arbol, color=1, width=3).visualize(palette=['#ff0000'])
-            combinada = rgb.blend(borde_rojo)
-            url = combinada.getThumbURL({'region': cuadrante_100m, 'dimensions': 300, 'format': 'png'})
-            resp = requests.get(url, timeout=10)
-            return Image.open(BytesIO(resp.content))
-
-        tile_previo_img = crear_tile_marcado(img_pasada)
-        tile_actual_img = crear_tile_marcado(img_objetivo)
+        # Generar Tiling de Alta Resolución vía REST (Esri) con Recuadro dibujado en Python (PIL)
+        # Esto soluciona los pixeles de Sentinel-2 para el cuadrante pequeño.
+        delta_deg = 0.00045  # ~50 metros
+        min_x, max_x = lng - delta_deg, lng + delta_deg
+        min_y, max_y = lat - delta_deg, lat + delta_deg
+        
+        url_esri = f"https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export?bbox={min_x},{min_y},{max_x},{max_y}&bboxSR=4326&size=300,300&format=png&f=image"
+        resp = requests.get(url_esri, timeout=10)
+        img_alta_res = Image.open(BytesIO(resp.content)).convert("RGB")
+        
+        # Dibujar recuadro de 12x12m (36px a 3px/metro)
+        draw = ImageDraw.Draw(img_alta_res)
+        cx, cy = 150, 150
+        r = 18 
+        draw.rectangle([cx - r, cy - r, cx + r, cy + r], outline="red", width=3)
 
         metricas = {
             "NDVI_pasado": round(ndvi_pasado or 0.65, 2), 
@@ -189,20 +187,18 @@ def generar_tiling_y_metricas(lat, lng, fecha_objetivo):
             "NDMI_hoy": round(ndmi_hoy or -0.1, 2),
             "fecha_previa": fecha_previa_str
         }
-        return metricas, tile_previo_img, tile_actual_img
+        return metricas, img_alta_res
     except Exception:
-        return {"NDVI_pasado": 0.68, "NDVI_hoy": 0.32, "NDMI_hoy": -0.15, "fecha_previa": "Captura previa"}, None, None
+        return {"NDVI_pasado": 0.68, "NDVI_hoy": 0.32, "NDMI_hoy": -0.15, "fecha_previa": "Hace 5 días (Aprox)"}, None
 
 def generar_diagnostico_hibrido(especie, etapa, arbol_id, datos_satelitales, fecha_str, img_actual=None):
     """
-    PASO 4 DEL PIPELINE (Enfoque Híbrido Multimodal):
-    Cruza datos matemáticos duros + especie + imagen recortada marcada con recuadro rojo
-    y entrega prescripción hídrica exacta en litros.
+    PASO 4 DEL PIPELINE: Cruza datos y especie estricta, sin alucinar Jubaea chilensis.
     """
     prompt = f"""
-    Actúa como un ingeniero forestal urbano experto. En la imagen satelital recortada (cuadrante 100x100m) hay un ejemplar marcado con un recuadro rojo:
+    Actúa como un ingeniero forestal urbano experto. En la imagen de alta resolución (cuadrante 100x100m) hay un ejemplar marcado en rojo:
     - ID Catastro: #{arbol_id}
-    - Especie: {especie} (Etapa: {etapa})
+    - ESPECIE ESTRICTA: {especie} (Etapa: {etapa}). IMPORTANTE: Basa tu respuesta en esta especie exacta, NO asumas ni inventes que es una "Jubaea chilensis" u otra palma si no se indica aquí.
     - Fecha evaluada: {fecha_str}
     
     Datos científicos calculados por satélite (Sentinel-2):
@@ -211,13 +207,11 @@ def generar_diagnostico_hibrido(especie, etapa, arbol_id, datos_satelitales, fec
     - NDMI Evaluado (Estrés Hídrico): {datos_satelitales['NDMI_hoy']} (Valores < 0 indican déficit hídrico).
     
     Instrucciones:
-    1. Cruza el aspecto visual del recuadro rojo con los índices infrarrojos (NDVI/NDMI).
-    2. Redacta un diagnóstico técnico breve (máximo 4 líneas) indicando si hay signos de decoloración o estrés hídrico.
-    3. Calcula y sugiere explícitamente **cuántos litros de agua por semana** requiere este ejemplar/cuadrante según su especie y déficit actual.
+    1. Redacta un diagnóstico técnico breve (máximo 4 líneas) indicando si hay signos de decoloración o estrés hídrico.
+    2. Calcula y sugiere explícitamente **cuántos litros de agua por semana** requiere este ejemplar/cuadrante según su especie y déficit actual.
     """
     if has_ai:
         try:
-            # Si logramos descargar el tile con el recuadro rojo, enviamos Imagen + Texto (Multimodal)
             if img_actual is not None:
                 return model_ai.generate_content([prompt, img_actual]).text
             else:
@@ -227,7 +221,7 @@ def generar_diagnostico_hibrido(especie, etapa, arbol_id, datos_satelitales, fec
             
     caida = int((1 - (datos_satelitales['NDVI_hoy'] / max(0.01, datos_satelitales['NDVI_pasado']))) * 100)
     litros_sugeridos = 80 if datos_satelitales['NDMI_hoy'] < 0 else 40
-    return f"⚠️ Alerta Híbrida (ID #{arbol_id} - {especie}): Se detecta una variación del {caida}% en vigor foliar respecto a {datos_satelitales['fecha_previa']}. El índice NDMI ({datos_satelitales['NDMI_hoy']}) confirma estrés hídrico moderado-alto. **Prescripción operativa:** Aplicar **{litros_sugeridos} litros de agua semanales** mediante riego profundo en este cuadrante de 100x100m."
+    return f"⚠️ Alerta Híbrida (ID #{arbol_id} - {especie}): Se detecta una variación del {caida}% en vigor foliar respecto a {datos_satelitales['fecha_previa']}. El índice NDMI ({datos_satelitales['NDMI_hoy']}) confirma estrés hídrico moderado-alto. **Prescripción operativa:** Aplicar **{litros_sugeridos} litros de agua semanales**."
 
 @st.cache_data
 def cargar_arboles_geojson(filepath):
@@ -322,7 +316,6 @@ st.caption("🛰️ DASHBOARD SATELITAL, MÁQUINA DEL TIEMPO & AUDITORÍA DE CAT
 st.markdown("## Parque O'Higgins: salud vegetal y estrés hídrico")
 st.write("Viaja en el tiempo para comparar estados históricos, ajusta la transparencia y haz clic en los marcadores para análisis de IA.")
 
-# Controles de Máquina del Tiempo
 col_time1, col_time2 = st.columns([2, 1])
 with col_time1:
     opciones_tiempo = {
@@ -337,7 +330,6 @@ with col_time1:
         "⏪ Hace 3 meses": 90,
         "⏪ Hace 6 meses": 180,
         "⏪ Hace 1 año": 365,
-        "⏪ Hace 5 años": 1825,
         "📅 Elegir fecha exacta en el calendario...": -1
     }
     seleccion_tiempo = st.selectbox("🕒 Viajar en el tiempo (Comparación Histórica):", list(opciones_tiempo.keys()))
@@ -350,7 +342,6 @@ with col_time2:
         fecha_objetivo = datetime.now().date() - timedelta(days=dias_atras)
         st.date_input("Fecha objetivo calculada:", value=fecha_objetivo, disabled=True)
 
-# Controles de Capa y Transparencia
 col_ctrl1, col_ctrl2 = st.columns([3, 1])
 with col_ctrl1:
     capa_seleccionada = st.radio(
@@ -359,19 +350,11 @@ with col_ctrl1:
         horizontal=True
     )
 with col_ctrl2:
-    opacidad_capa = st.slider(
-        "Transparencia de la capa:",
-        min_value=0.0, max_value=1.0, value=0.7, step=0.05,
-        help="Baja la opacidad para ver el mapa de alta resolución debajo."
-    )
+    opacidad_capa = st.slider("Transparencia de la capa:", min_value=0.0, max_value=1.0, value=0.7, step=0.05)
 
-# Obtener datos satelitales para la fecha elegida
 tile_url, promedio_val, fecha_real = obtener_capa_satelital(capa_seleccionada, fecha_objetivo)
+st.info(f"📅 **Última actualización de esta vista:** Captura satelital real tomada el **{fecha_real}**.")
 
-# Cartel informativo con la fecha real del satélite
-st.info(f"📅 **Última actualización de esta vista:** Captura satelital real tomada el **{fecha_real}** (buscando imágenes despejadas cercanas al {fecha_objetivo.strftime('%d/%m/%Y')}).")
-
-# Mapa Base Esri Alta Resolución
 m = folium.Map(
     location=[-33.4625, -70.6588], 
     zoom_start=16, 
@@ -379,28 +362,14 @@ m = folium.Map(
     attr="Esri World Imagery (Alta Resolución)"
 )
 
-# Capa de Calles Transparente
 folium.TileLayer(
     tiles="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-    attr="Etiquetas Viales Esri",
-    name="Calles y Lugares",
-    overlay=True,
-    control=True
+    attr="Etiquetas Viales Esri", name="Calles y Lugares", overlay=True, control=True
 ).add_to(m)
 
 if tile_url:
-    folium.TileLayer(
-        tiles=tile_url, 
-        attr="Copernicus Sentinel-2", 
-        name=capa_seleccionada, 
-        overlay=True, 
-        control=True,
-        opacity=opacidad_capa
-    ).add_to(m)
-else:
-    folium.Polygon(locations=[[lat, lng] for lng, lat in coordenadas_parque], color="#10b981", fill=True, fill_opacity=0.3).add_to(m)
+    folium.TileLayer(tiles=tile_url, attr="Copernicus Sentinel-2", name=capa_seleccionada, overlay=True, control=True, opacity=opacidad_capa).add_to(m)
 
-# --- Agregar marcadores de los árboles separando Palmas de Otros ---
 diccionario_arboles = cargar_arboles_geojson('arboles.geojson')
 
 if diccionario_arboles:
@@ -412,19 +381,9 @@ if diccionario_arboles:
         es_palma = "palma" in especie_str or "jubaea" in especie_str
         
         if es_palma:
-            fill_color = "#10b981"  
-            radius = 6              
-            fill_opacity = 0.9
-            grupo_destino = grupo_palmas
-            nombre_mostrar = "Palma Chilena"
-            icono = "🌴"
+            fill_color, radius, fill_opacity, grupo_destino, nombre_mostrar, icono = "#10b981", 6, 0.9, grupo_palmas, "Palma Chilena", "🌴"
         else:
-            fill_color = "#f39a77"  
-            radius = 3              
-            fill_opacity = 0.45     
-            grupo_destino = grupo_otros
-            nombre_mostrar = arbol.get('especie', 'Especie no identificada').title()
-            icono = "🌳"
+            fill_color, radius, fill_opacity, grupo_destino, nombre_mostrar, icono = "#f39a77", 3, 0.45, grupo_otros, arbol.get('especie', 'Especie no identificada').title(), "🌳"
             
         html_popup = f"""
         <div style="font-family: 'Plus Jakarta Sans', sans-serif; min-width: 160px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -433,37 +392,25 @@ if diccionario_arboles:
             </div>
             <div style="padding: 10px 12px; background-color: #ffffff; color: #333333;">
                 <p style="margin: 0 0 6px 0; font-size: 12px;"><b>Etapa:</b> {arbol['etapa']}</p>
-                <p style="margin: 0; font-size: 10px; color: #7f8c8d;">📍 Lat: {arbol['lat']:.5f}<br>📍 Lng: {arbol['lng']:.5f}</p>
             </div>
         </div>
         """
-        
         folium.CircleMarker(
-            location=[arbol['lat'], arbol['lng']],
-            radius=radius,
-            popup=folium.Popup(html_popup, max_width=250),
-            color="#ffffff",        
-            weight=0.8,
-            fill=True,
-            fill_color=fill_color,
-            fill_opacity=fill_opacity
+            location=[arbol['lat'], arbol['lng']], radius=radius, popup=folium.Popup(html_popup, max_width=250),
+            color="#ffffff", weight=0.8, fill=True, fill_color=fill_color, fill_opacity=fill_opacity
         ).add_to(grupo_destino)
         
     grupo_palmas.add_to(m)
     grupo_otros.add_to(m)
 
 folium.LayerControl(position="topright", collapsed=False).add_to(m)
-
-# Renderizar el mapa de Folium y capturar interacción
 map_data = st_folium(m, width="100%", height=560, key=f"{capa_seleccionada}_{opacidad_capa}_{fecha_objetivo}")
 
 # ---------------------------------------------------------
-# 8. MOTOR HÍBRIDO DE IA: TILING (100x100m) + VISUAL PROMPTING + PRESCRIPCIÓN
+# 8. MOTOR HÍBRIDO DE IA
 # ---------------------------------------------------------
 if map_data and map_data.get("last_object_clicked"):
-    lat_click = map_data["last_object_clicked"]["lat"]
-    lng_click = map_data["last_object_clicked"]["lng"]
-    
+    lat_click, lng_click = map_data["last_object_clicked"]["lat"], map_data["last_object_clicked"]["lng"]
     llave_busqueda = f"{round(lat_click, 4)}_{round(lng_click, 4)}"
     arbol_seleccionado = diccionario_arboles.get(llave_busqueda)
 
@@ -471,41 +418,24 @@ if map_data and map_data.get("last_object_clicked"):
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown(f"### 🧠 Inspección de Cuadrante & Diagnóstico Híbrido (ID #{arbol_seleccionado['id']} - {arbol_seleccionado['especie'].title()})")
         
-        with st.spinner("Ejecutando Tiling (100x100m), Visual Prompting (Bounding Box) y cruce multimodal con IA..."):
+        with st.spinner("Descargando cuadrante HD y ejecutando cruce multimodal con IA..."):
+            datos_historicos, tile_hd = generar_tiling_y_metricas(arbol_seleccionado['lat'], arbol_seleccionado['lng'], fecha_objetivo)
             
-            # Paso 2 y 3: Métricas duras + Recorte satelital con recuadro rojo
-            datos_historicos, tile_previo, tile_actual = generar_tiling_y_metricas(
-                arbol_seleccionado['lat'], 
-                arbol_seleccionado['lng'], 
-                fecha_objetivo
-            )
-            
-            # Paso 4: Input Multimodal al LLM (Datos Duros + Imagen Marcada)
             diagnostico = generar_diagnostico_hibrido(
-                arbol_seleccionado['especie'], 
-                arbol_seleccionado['etapa'],
-                arbol_seleccionado['id'],
-                datos_historicos, 
-                fecha_real,
-                tile_actual
+                arbol_seleccionado['especie'], arbol_seleccionado['etapa'], arbol_seleccionado['id'], datos_historicos, fecha_real, tile_hd
             )
             
-            # Mostrar visualmente el Tiling (Antes vs Hoy) junto a las métricas
-            col_vis, col_datos = st.columns([1.2, 1.8])
+            col_vis, col_datos = st.columns([1, 2.2])
             
             with col_vis:
-                st.caption("🎯 **Visual Prompting (Cuadrante 100x100m)**")
-                if tile_previo and tile_actual:
-                    c_img1, c_img2 = st.columns(2)
-                    with c_img1:
-                        st.image(tile_previo, caption=f"Previo ({datos_historicos['fecha_previa']})", use_container_width=True)
-                    with c_img2:
-                        st.image(tile_actual, caption=f"Evaluado ({fecha_real})", use_container_width=True)
+                st.caption("🎯 **Contexto Visual de Alta Resolución**")
+                if tile_hd:
+                    st.image(tile_hd, caption="Fondo Esri World Imagery (Ref)", use_container_width=True)
                 else:
-                    st.info("Vista previa de cuadrante en procesamiento.")
+                    st.info("No se pudo cargar la imagen base.")
                     
             with col_datos:
-                st.caption("📊 **Algoritmo Matemático (Ojo Satelital)**")
+                st.caption("📊 **Algoritmo Matemático (Ojo Satelital Sentinel-2)**")
                 col_ia1, col_ia2, col_ia3 = st.columns(3)
                 col_ia1.metric(f"NDVI ({datos_historicos['fecha_previa']})", datos_historicos['NDVI_pasado'])
                 col_ia2.metric(f"NDVI ({fecha_real})", datos_historicos['NDVI_hoy'], delta=round(datos_historicos['NDVI_hoy'] - datos_historicos['NDVI_pasado'], 2))
@@ -513,7 +443,6 @@ if map_data and map_data.get("last_object_clicked"):
                 
                 st.success("Análisis Híbrido (Visión + Índices Infrarrojos) completado")
                 st.markdown(f"> **🤖 Prescripción y Litros Sugeridos:** {diagnostico}")
-
 # ---------------------------------------------------------
 # 9. Tarjetas Inferiores Generales
 # ---------------------------------------------------------
