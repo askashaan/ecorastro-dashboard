@@ -126,11 +126,18 @@ def obtener_capa_satelital(capa_tipo, fecha_objetivo):
             ndmi = imagen.normalizedDifference(["B8A", "B11"])
             corte = ndmi.updateMask(ndvi.gt(0.15)).rename("NDMI").clip(parque_geometry)
             vis_params = {"min": -0.05, "max": 0.3, "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#abd9e9", "#74add1", "#4575b4"]}
+        elif "Zonas" in capa_tipo:
+            # MEJORA 1: Grilla de Zonas de Cuidado de 20x20 metros
+            ndvi = imagen.normalizedDifference(["B8", "B4"])
+            ndmi = imagen.normalizedDifference(["B8A", "B11"])
+            corte = ndmi.updateMask(ndvi.gt(0.15))\
+                .reduceResolution(reducer=ee.Reducer.mean(), maxPixels=1024)\
+                .reproject(crs=imagen.projection(), scale=20).rename("NDMI_Grid").clip(parque_geometry)
+            vis_params = {"min": -0.05, "max": 0.3, "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#abd9e9", "#74add1", "#4575b4"]}
         elif "NDBI" in capa_tipo:
             corte = imagen.normalizedDifference(["B11", "B8"]).rename("NDBI").clip(parque_geometry)
             vis_params = {"min": -0.2, "max": 0.2, "palette": ["#1a9850", "#91cf60", "#d9ef8b", "#fee08b", "#fc8d59", "#d73027"]}
         elif "Térmico" in capa_tipo:
-            # Satélite Landsat 8/9 para Temperatura Superficial (LST)
             col_landsat = ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")\
                 .filterBounds(parque_geometry)\
                 .filterDate(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d'))\
@@ -153,13 +160,43 @@ def obtener_capa_satelital(capa_tipo, fecha_objetivo):
     except Exception:
         return None, 0.0, "No se encontraron capturas despejadas para esa fecha"
 
+def obtener_estado_arboles(diccionario, fecha_objetivo):
+    """ MEJORA 5: Escanea matemáticamente la salud de todos los árboles del GeoJSON """
+    if not ee_status or not diccionario: return diccionario
+    
+    # Copia segura de atributos
+    dic_nuevo = {k: v.copy() for k, v in diccionario.items()}
+    for k in dic_nuevo: dic_nuevo[k]['ndmi'] = 0.15 # Valor verde por defecto
+    
+    try:
+        fecha_fin = datetime.combine(fecha_objetivo, datetime.max.time())
+        fecha_inicio = fecha_fin - timedelta(days=45) 
+        
+        imagen = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")\
+            .filterBounds(ee.Geometry.Polygon(coordenadas_parque))\
+            .filterDate(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d'))\
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))\
+            .sort("system:time_start", False).first()
+            
+        ndmi = imagen.normalizedDifference(["B8A", "B11"]).rename('NDMI')
+        
+        # Muestreo veloz de GEE en un solo llamado
+        features = [ee.Feature(ee.Geometry.Point([v['lng'], v['lat']]), {'llave': k}) for k, v in dic_nuevo.items()]
+        fc = ee.FeatureCollection(features)
+        
+        sampled = ndmi.sampleRegions(collection=fc, scale=10, geometries=False)
+        resultados = sampled.getInfo().get('features', [])
+        
+        for res in resultados:
+            k = res.get('properties', {}).get('llave')
+            if k in dic_nuevo:
+                dic_nuevo[k]['ndmi'] = res['properties'].get('NDMI', 0.15)
+    except Exception:
+        pass
+        
+    return dic_nuevo
+
 def generar_tiling_y_metricas(lat, lng, fecha_objetivo):
-    """
-1. Calcula métricas duras de NDVI/NDMI.
-2. Fuerza la medición anterior a exactamente 5 días atrás.
-3. Descarga fondo HD desde Esri para contexto visual.
-4. Extrae serie temporal histórica (Últimos 8 meses).
-    """
     if not ee_status: 
         return {"NDVI_pasado": 0.65, "NDVI_hoy": 0.35, "NDMI_hoy": -0.1, "fecha_previa": "Hace 5 días", "serie_temporal": []}, None
     
@@ -167,11 +204,9 @@ def generar_tiling_y_metricas(lat, lng, fecha_objetivo):
     fecha_fin = datetime.combine(fecha_objetivo, datetime.max.time())
     
     coleccion = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(punto).filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 25))
-    
     img_objetivo = coleccion.filterDate(ee.Date(fecha_fin - timedelta(days=20)), ee.Date(fecha_fin)).sort("system:time_start", False).first()
     
     try:
-        # Calcular fecha previa (Exactamente 5 días atrás según fecha evaluada)
         fecha_evaluado_ee = ee.Date(img_objetivo.get('system:time_start'))
         fecha_previa_ideal = fecha_evaluado_ee.advance(-5, 'day')
         
@@ -182,7 +217,6 @@ def generar_tiling_y_metricas(lat, lng, fecha_objetivo):
         ndmi_hoy = img_objetivo.normalizedDifference(["B8A", "B11"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
         fecha_previa_str = ee.Date(img_pasada.get('system:time_start')).format('dd/MM/YYYY').getInfo()
 
-        # Generar Tiling de Alta Resolución vía REST (Esri)
         delta_deg = 0.00045  
         min_x, max_x = lng - delta_deg, lng + delta_deg
         min_y, max_y = lat - delta_deg, lat + delta_deg
@@ -190,13 +224,11 @@ def generar_tiling_y_metricas(lat, lng, fecha_objetivo):
         url_esri = f"https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export?bbox={min_x},{min_y},{max_x},{max_y}&bboxSR=4326&size=300,300&format=png&f=image"
         resp = requests.get(url_esri, timeout=10)
         img_alta_res = Image.open(BytesIO(resp.content)).convert("RGB")
-        
         draw = ImageDraw.Draw(img_alta_res)
         cx, cy = 150, 150
         r = 18 
         draw.rectangle([cx - r, cy - r, cx + r, cy + r], outline="red", width=3)
 
-        # Extraer Serie de Tiempo (Últimos 8 meses para el ECG del árbol)
         fecha_hist = fecha_fin - timedelta(days=240)
         col_ts = coleccion.filterDate(ee.Date(fecha_hist), ee.Date(fecha_fin))
         
@@ -222,9 +254,6 @@ def generar_tiling_y_metricas(lat, lng, fecha_objetivo):
         return {"NDVI_pasado": 0.68, "NDVI_hoy": 0.32, "NDMI_hoy": -0.15, "fecha_previa": "Hace 5 días (Aprox)", "serie_temporal": []}, None
 
 def generar_diagnostico_hibrido(especie, etapa, arbol_id, datos_satelitales, fecha_str, img_actual=None):
-    """
-    PASO 4 DEL PIPELINE: Cruza datos y especie estricta, calculando riego de forma proporcional.
-    """
     prompt = f"""
     Actúa como un ingeniero forestal urbano experto. En la imagen de alta resolución hay un ejemplar marcado en rojo:
 - ID Catastro: #{arbol_id}
@@ -237,12 +266,12 @@ def generar_diagnostico_hibrido(especie, etapa, arbol_id, datos_satelitales, fec
 - NDMI Evaluado (Estrés Hídrico): {datos_satelitales['NDMI_hoy']}
     
     Instrucciones:
-1. Redacta un diagnóstico técnico breve (máximo 4 líneas) analizando la evolución del NDVI y el nivel actual de NDMI.
-2. Calcula los litros de agua semanales requeridos usando esta regla proporcional estricta:
-  - ESTADO ÓPTIMO: Si el NDVI es >= 0.6 (o muestra clara mejora) y el NDMI es >= 0.2, el árbol está sano. La prescripción DEBE SER **0 Litros semanales**.
-  - ESTRÉS LEVE / MANTENCIÓN: Si el NDMI está entre 0.0 y 0.19, prescribir riego ligero (ej. 10 a 25 Litros).
-  - ESTRÉS MODERADO / CRÍTICO: Si el NDMI es negativo (< 0.0), el déficit es claro. Aumentar proporcionalmente entre 40 y 100 Litros (mientras más negativo el NDMI y mayor la caída de NDVI, más agua).
-3. Finaliza siempre indicando la cantidad en negrita (ej: **0 litros semanales**, **15 litros semanales**, etc.).
+1. Redacta un diagnóstico técnico breve analizando la evolución del NDVI y el nivel actual de NDMI.
+2. Calcula los litros de agua semanales requeridos usando esta regla estricta:
+  - ESTADO ÓPTIMO (NDVI >= 0.6 y NDMI >= 0.2): **0 Litros semanales**.
+  - ESTRÉS LEVE (NDMI entre 0.0 y 0.19): Riego ligero (10 a 25 Litros).
+  - ESTRÉS MODERADO / CRÍTICO (NDMI < 0.0): Aumentar proporcionalmente entre 40 y 100 Litros.
+3. Finaliza siempre indicando la cantidad en negrita.
     """
     
     if has_ai:
@@ -254,49 +283,22 @@ def generar_diagnostico_hibrido(especie, etapa, arbol_id, datos_satelitales, fec
         except Exception:
             pass
             
-    # Lógica matemática de respaldo (Fallback si falla Gemini)
     ndvi = datos_satelitales['NDVI_hoy']
     ndmi = datos_satelitales['NDMI_hoy']
     ndvi_prev = datos_satelitales['NDVI_pasado']
-    
     variacion_ndvi = ndvi - ndvi_prev
     
     if ndvi >= 0.55 and ndmi >= 0.15:
-        litros_sugeridos = 0
-        accion = "Estado óptimo. No requiere riego adicional."
+        litros_sugeridos, accion = 0, "Estado óptimo. No requiere riego."
     elif ndmi >= 0.0:
-        litros_sugeridos = 20
-        accion = "Estrés hídrico leve. Riego de mantenimiento sugerido."
+        litros_sugeridos, accion = 20, "Estrés hídrico leve. Riego de mantenimiento sugerido."
     elif ndmi >= -0.1:
-        litros_sugeridos = 50
-        accion = "Estrés hídrico moderado. Déficit confirmado."
+        litros_sugeridos, accion = 50, "Estrés hídrico moderado. Déficit confirmado."
     else:
-        litros_sugeridos = 90
-        accion = "Estrés hídrico crítico. Riego de emergencia requerido."
+        litros_sugeridos, accion = 90, "Estrés hídrico crítico. Riego de emergencia requerido."
         
     tendencia = "mejora" if variacion_ndvi >= 0 else "caída"
-    
-    return f"⚠️ Análisis Híbrido (ID #{arbol_id} - {especie}): Se detecta una {tendencia} de {abs(round(variacion_ndvi, 2))} en el vigor (NDVI) respecto a {datos_satelitales['fecha_previa']}. El índice NDMI ({ndmi}) indica: {accion}. **Prescripción operativa:** Aplicar **{litros_sugeridos} litros de agua semanales**."
-
-@st.cache_data
-def cargar_arboles_geojson(filepath):
-    arboles = {}
-    if os.path.exists(filepath):
-        with open(filepath, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            for idx, feature in enumerate(data.get('features', []), start=1):
-                if feature['geometry']['type'] == 'Point':
-                    coords = feature['geometry']['coordinates']
-                    props = feature['properties']
-                    llave = f"{round(coords[1], 4)}_{round(coords[0], 4)}"
-                    arboles[llave] = {
-                        'id': props.get('id', idx),
-                        'lat': coords[1],
-                        'lng': coords[0],
-                        'especie': props.get('species', 'Árbol sin especificar'),
-                        'etapa': props.get('life_cycle', 'Desconocida')
-                    }
-    return arboles
+    return f"⚠️ Análisis Híbrido (ID #{arbol_id} - {especie}): Se detecta una {tendencia} de {abs(round(variacion_ndvi, 2))} en el vigor respecto a {datos_satelitales['fecha_previa']}. El índice NDMI ({ndmi}) indica: {accion}. **Prescripción operativa:** Aplicar **{litros_sugeridos} litros de agua semanales**."
 
 # ---------------------------------------------------------
 # 5. Hero Section
@@ -392,68 +394,90 @@ with col_time2:
 
 col_ctrl1, col_ctrl2 = st.columns([3, 1])
 with col_ctrl1:
+    # NUEVA OPCIÓN: Agregamos las Zonas de 20x20
     capa_seleccionada = st.radio(
         "Capas de análisis Sentinel-2 / Landsat:",
-        ["🌱 Índice de Salud (NDVI)", "💧 Estrés Hídrico (NDMI)", "🏢 Zonas Construidas (NDBI)", "🌡️ Mapa Térmico (Landsat)", "📸 Foto Satelital (RGB)"],
+        ["🌱 Índice de Salud (NDVI)", "💧 Estrés Hídrico (NDMI)", "🔲 Zonas de Cuidado (20x20m)", "🏢 Zonas Construidas (NDBI)", "🌡️ Mapa Térmico (Landsat)", "📸 Foto Satelital (RGB)"],
         horizontal=True
     )
 with col_ctrl2:
-    opacidad_capa = st.slider("Transparencia de la capa:", min_value=0.0, max_value=1.0, value=0.7, step=0.05)
+    opacidad_capa = st.slider("Transparencia de la capa:", min_value=0.0, max_value=1.0, value=0.75, step=0.05)
 
 tile_url, promedio_val, fecha_real = obtener_capa_satelital(capa_seleccionada, fecha_objetivo)
 st.info(f"📅 **Última actualización de esta vista:** Captura satelital real tomada el **{fecha_real}**.")
 
+# MEJORA 2: Zoom fino milimétrico
 m = folium.Map(
     location=[-33.4625, -70.6588], 
-    zoom_start=16, 
+    zoom_start=16.5, 
+    zoom_control=True,
+    zoom_snap=0.25,      # Permite acercar/alejar de a poco
+    zoom_delta=0.25,     # La rueda del ratón y el botón +/- avanzan un 25% en vez del 100%
     tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     attr="Esri World Imagery (Alta Resolución)"
 )
 
 folium.TileLayer(
     tiles="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-    attr="Etiquetas Viales Esri", name="Calles y Lugares", overlay=True, control=True
+    attr="Etiquetas Viales Esri", name="🗺️ Calles y Lugares", overlay=True, control=True
 ).add_to(m)
 
 if tile_url:
-    folium.TileLayer(tiles=tile_url, attr="Copernicus Sentinel-2", name=capa_seleccionada, overlay=True, control=True, opacity=opacidad_capa).add_to(m)
+    # Limpiamos el nombre feo para que la leyenda se vea profesional
+    folium.TileLayer(tiles=tile_url, attr="Copernicus Sentinel-2", name=f"🛰️ {capa_seleccionada}", overlay=True, control=True, opacity=opacidad_capa).add_to(m)
 
-diccionario_arboles = cargar_arboles_geojson('arboles.geojson')
+diccionario_arboles_base = cargar_arboles_geojson('arboles.geojson')
 
-if diccionario_arboles:
-    grupo_palmas = folium.FeatureGroup(name="🌴 Palmas Chilenas", show=True)
-    grupo_otros = folium.FeatureGroup(name="🌳 Otros Árboles (No identificados)", show=True)
+if diccionario_arboles_base:
+    
+    # MEJORA 5: Extraer estado matemático para colorear los árboles
+    with st.spinner("Escaneando el estado hídrico de todo el catastro..."):
+        diccionario_arboles = obtener_estado_arboles(diccionario_arboles_base, fecha_objetivo)
+        
+    # Capas separadas para que la leyenda permita apagar los que están sanos
+    grupo_sanos = folium.FeatureGroup(name="🟢 Estado Óptimo (NDMI alto)", show=True)
+    grupo_leves = folium.FeatureGroup(name="🟡 Estrés Leve (Mantención)", show=True)
+    grupo_criticos = folium.FeatureGroup(name="🔴 Déficit Crítico (Alerta)", show=True)
     
     for arbol in diccionario_arboles.values():
-        especie_str = str(arbol.get('especie', '')).lower()
-        es_palma = "palma" in especie_str or "jubaea" in especie_str
+        especie_str = str(arbol.get('especie', '')).title()
+        ndmi_val = arbol.get('ndmi', 0.15)
         
-        if es_palma:
-            fill_color, radius, fill_opacity, grupo_destino, nombre_mostrar, icono = "#10b981", 6, 0.9, grupo_palmas, "Palma Chilena", "🌴"
+        # Semáforo lógico
+        if ndmi_val >= 0.15:
+            fill_color, grupo_destino, estado_str = "#10b981", grupo_sanos, "Salud Óptima"
+        elif ndmi_val >= 0.0:
+            fill_color, grupo_destino, estado_str = "#f59e0b", grupo_leves, "Estrés Leve"
         else:
-            fill_color, radius, fill_opacity, grupo_destino, nombre_mostrar, icono = "#f39a77", 3, 0.45, grupo_otros, arbol.get('especie', 'Especie no identificada').title(), "🌳"
+            fill_color, grupo_destino, estado_str = "#ef4444", grupo_criticos, "Déficit Crítico"
+            
+        icono = "🌴" if "Palma" in especie_str or "Jubaea" in especie_str else "🌳"
             
         html_popup = f"""
-        <div style="font-family: 'Plus Jakarta Sans', sans-serif; min-width: 160px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="font-family: 'Plus Jakarta Sans', sans-serif; min-width: 170px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <div style="background-color: {fill_color}; color: white; padding: 6px 12px; font-weight: bold; font-size: 13px; border-bottom: 1px solid rgba(0,0,0,0.1);">
-                {icono} {nombre_mostrar} (ID #{arbol['id']})
+                {icono} {especie_str} (ID #{arbol['id']})
             </div>
             <div style="padding: 10px 12px; background-color: #ffffff; color: #333333;">
                 <p style="margin: 0 0 6px 0; font-size: 12px;"><b>Etapa:</b> {arbol['etapa']}</p>
+                <p style="margin: 0; font-size: 12px;"><b>Situación:</b> <span style="color: {fill_color}; font-weight: bold;">{estado_str}</span></p>
             </div>
         </div>
         """
         folium.CircleMarker(
-            location=[arbol['lat'], arbol['lng']], radius=radius, popup=folium.Popup(html_popup, max_width=250),
-            color="#ffffff", weight=0.8, fill=True, fill_color=fill_color, fill_opacity=fill_opacity
+            location=[arbol['lat'], arbol['lng']], radius=5.5, popup=folium.Popup(html_popup, max_width=250),
+            color="#ffffff", weight=1, fill=True, fill_color=fill_color, fill_opacity=0.95
         ).add_to(grupo_destino)
         
-    grupo_palmas.add_to(m)
-    grupo_otros.add_to(m)
+    grupo_sanos.add_to(m)
+    grupo_leves.add_to(m)
+    grupo_criticos.add_to(m)
 
-folium.LayerControl(position="topright", collapsed=False).add_to(m)
+# MEJORA 4: Leyenda oculta y limpia (Retráctil)
+folium.LayerControl(position="topright", collapsed=True).add_to(m)
+
+# Renderizar el mapa de Folium y capturar interacción
 map_data = st_folium(m, width="100%", height=560, key=f"{capa_seleccionada}_{opacidad_capa}_{fecha_objetivo}")
-
 # ---------------------------------------------------------
 # 8. MOTOR HÍBRIDO DE IA
 # ---------------------------------------------------------
