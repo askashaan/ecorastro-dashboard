@@ -127,12 +127,10 @@ def obtener_capa_satelital(capa_tipo, fecha_objetivo):
             corte = ndmi.updateMask(ndvi.gt(0.15)).rename("NDMI").clip(parque_geometry)
             vis_params = {"min": -0.05, "max": 0.3, "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#abd9e9", "#74add1", "#4575b4"]}
         elif "Zonas" in capa_tipo:
-            # MEJORA 1: Grilla de Zonas de Cuidado de 20x20 metros
+            # MEJORA 1: Grilla de Zonas de Cuidado de 20x20 metros corregida
             ndvi = imagen.normalizedDifference(["B8", "B4"])
             ndmi = imagen.normalizedDifference(["B8A", "B11"])
-            corte = ndmi.updateMask(ndvi.gt(0.15))\
-                .reduceResolution(reducer=ee.Reducer.mean(), maxPixels=1024)\
-                .reproject(crs=imagen.projection(), scale=20).rename("NDMI_Grid").clip(parque_geometry)
+            corte = ndmi.updateMask(ndvi.gt(0.1)).reproject(crs='EPSG:4326', scale=20).rename("NDMI_Grid").clip(parque_geometry)
             vis_params = {"min": -0.05, "max": 0.3, "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b", "#abd9e9", "#74add1", "#4575b4"]}
         elif "NDBI" in capa_tipo:
             corte = imagen.normalizedDifference(["B11", "B8"]).rename("NDBI").clip(parque_geometry)
@@ -499,41 +497,54 @@ map_data = st_folium(m, width="100%", height=560, key=f"{capa_seleccionada}_{opa
 # ---------------------------------------------------------
 # 8. MOTOR HÍBRIDO DE IA
 # ---------------------------------------------------------
+arbol_seleccionado = None
+
+# Detectar clic en el mapa
 if map_data and map_data.get("last_object_clicked"):
     lat_click, lng_click = map_data["last_object_clicked"]["lat"], map_data["last_object_clicked"]["lng"]
     llave_busqueda = f"{round(lat_click, 4)}_{round(lng_click, 4)}"
     arbol_seleccionado = diccionario_arboles.get(llave_busqueda)
-
-    if arbol_seleccionado:
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown(f"### 🧠 Inspección de Cuadrante & Diagnóstico Híbrido (ID #{arbol_seleccionado['id']} - {arbol_seleccionado['especie'].title()})")
+    # Limpiamos selección de tabla si se hace clic en el mapa
+    if 'arbol_tabla_id' in st.session_state:
+        del st.session_state['arbol_tabla_id']
         
-        with st.spinner("Descargando cuadrante HD, historial temporal y ejecutando IA..."):
-            datos_historicos, tile_hd = generar_tiling_y_metricas(arbol_seleccionado['lat'], arbol_seleccionado['lng'], fecha_objetivo)
-            diagnostico = generar_diagnostico_hibrido(arbol_seleccionado['especie'], arbol_seleccionado['etapa'], arbol_seleccionado['id'], datos_historicos, fecha_real, tile_hd)
-            
-            col_vis, col_datos = st.columns([1, 2.2])
-            with col_vis:
-                st.caption("🎯 **Contexto Visual de Alta Resolución**")
-                if tile_hd:
-                    st.image(tile_hd, caption="Fondo Esri World Imagery (Ref)", use_container_width=True)
-                else:
-                    st.info("No se pudo cargar la imagen base.")
-                    
-            with col_datos:
-                st.caption("📊 **Algoritmo Matemático (Ojo Satelital Sentinel-2)**")
-                col_ia1, col_ia2, col_ia3 = st.columns(3)
-                col_ia1.metric(f"NDVI ({datos_historicos['fecha_previa']})", datos_historicos['NDVI_pasado'])
-                col_ia2.metric(f"NDVI ({fecha_real})", datos_historicos['NDVI_hoy'], delta=round(datos_historicos['NDVI_hoy'] - datos_historicos['NDVI_pasado'], 2))
-                col_ia3.metric(f"NDMI ({fecha_real})", datos_historicos['NDMI_hoy'])
-                
-                st.success("Análisis Híbrido (Visión + Índices Infrarrojos) completado")
-                st.markdown(f"> **🤖 Prescripción Operativa:** {diagnostico}")
+# Detectar clic en la tabla de alertas
+elif st.session_state.get('arbol_tabla_id'):
+    for k, v in diccionario_arboles.items():
+        if v['id'] == st.session_state['arbol_tabla_id']:
+            arbol_seleccionado = v
+            break
 
-                if datos_historicos.get("serie_temporal"):
-                    st.markdown("📈 **Evolución Biológica (Últimos 8 meses)**")
-                    df_ts = pd.DataFrame(datos_historicos["serie_temporal"]).set_index("Fecha")
-                    st.line_chart(df_ts, color=["#10b981", "#3b82f6"], height=180)
+if arbol_seleccionado:
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(f"### 🧠 Inspección de Cuadrante & Diagnóstico Híbrido (ID #{arbol_seleccionado['id']} - {arbol_seleccionado['especie'].title()})")
+    
+    with st.spinner("Descargando cuadrante HD, historial temporal y ejecutando IA..."):
+        datos_historicos, tile_hd = generar_tiling_y_metricas(arbol_seleccionado['lat'], arbol_seleccionado['lng'], fecha_objetivo)
+        diagnostico = generar_diagnostico_hibrido(arbol_seleccionado['especie'], arbol_seleccionado['etapa'], arbol_seleccionado['id'], datos_historicos, fecha_real, tile_hd)
+        
+        col_vis, col_datos = st.columns([1, 2.2])
+        with col_vis:
+            st.caption("🎯 **Contexto Visual de Alta Resolución**")
+            if tile_hd:
+                st.image(tile_hd, caption="Fondo Esri World Imagery (Ref)", use_container_width=True)
+            else:
+                st.info("No se pudo cargar la imagen base.")
+                
+        with col_datos:
+            st.caption("📊 **Algoritmo Matemático (Ojo Satelital Sentinel-2)**")
+            col_ia1, col_ia2, col_ia3 = st.columns(3)
+            col_ia1.metric(f"NDVI ({datos_historicos['fecha_previa']})", datos_historicos['NDVI_pasado'])
+            col_ia2.metric(f"NDVI ({fecha_real})", datos_historicos['NDVI_hoy'], delta=round(datos_historicos['NDVI_hoy'] - datos_historicos['NDVI_pasado'], 2))
+            col_ia3.metric(f"NDMI ({fecha_real})", datos_historicos['NDMI_hoy'])
+            
+            st.success("Análisis Híbrido (Visión + Índices Infrarrojos) completado")
+            st.markdown(f"> **🤖 Prescripción Operativa:** {diagnostico}")
+
+            if datos_historicos.get("serie_temporal"):
+                st.markdown("📈 **Evolución Biológica (Últimos 8 meses)**")
+                df_ts = pd.DataFrame(datos_historicos["serie_temporal"]).set_index("Fecha")
+                st.line_chart(df_ts, color=["#10b981", "#3b82f6"], height=180)
 
 # ---------------------------------------------------------
 # 9. Panel de Impacto Ambiental & Alerta Temprana
@@ -546,14 +557,42 @@ if "Normal" not in capa_seleccionada and "Térmico" not in capa_seleccionada:
 
     st.markdown("---")
     st.markdown("### 🌍 Impacto Climático y Alertas Operativas")
-    col_m1, col_m2, col_m3 = st.columns(3)
+    
+    # Damos más espacio a la columna 3 para que la tabla se vea bien
+    col_m1, col_m2, col_m3 = st.columns([1, 1, 2])
     
     with col_m1:
         st.metric(label="SALUD VEGETAL PROMEDIO", value=f"{pct_val}%", delta="Estado Óptimo")
     with col_m2:
         st.metric(label="CAPTURA ESTIMADA DE CO2", value=f"{toneladas_co2} Toneladas/mes", delta="Vigor Biológico Activo")
     with col_m3:
-        st.error("🚨 **TOP 3 - RIESGO HÍDRICO (Acción Inmediata)**\n\n1. Palma #14 (Caída 12%)\n2. Plátano Oriental #8 (NDMI -0.1)\n3. Palma #3 (Estrés severo)")
+        st.error("🚨 **Riesgo Hídrico (Haz clic en un árbol para inspeccionarlo)**")
+        
+        # Filtrar y ordenar árboles con estrés
+        lista_riesgo = []
+        for k, v in diccionario_arboles.items():
+            if v.get('ndmi', 0.15) < 0.15:
+                estado = "Crítico 🔴" if v.get('ndmi', 0.15) < 0.0 else "Leve 🟡"
+                lista_riesgo.append({"ID": v['id'], "Especie": v['especie'].title(), "NDMI": round(v.get('ndmi', 0.15), 2), "Estado": estado})
+        
+        if lista_riesgo:
+            df_riesgo = pd.DataFrame(lista_riesgo).sort_values(by="NDMI")
+            
+            # Tabla interactiva
+            evento_tabla = st.dataframe(
+                df_riesgo, 
+                hide_index=True, 
+                use_container_width=True, 
+                selection_mode="single-row", 
+                on_select="rerun"
+            )
+            
+            # Capturar el clic en la fila de la tabla y guardarlo en el estado de sesión
+            if len(evento_tabla.selection.rows) > 0:
+                idx_seleccionado = evento_tabla.selection.rows[0]
+                st.session_state['arbol_tabla_id'] = df_riesgo.iloc[idx_seleccionado]['ID']
+        else:
+            st.success("¡Todos los árboles de la zona se encuentran en estado óptimo!")
 
 # ---------------------------------------------------------
 # 10. GUÍA TÉCNICA E INTERPRETACIÓN CIENTÍFICA B2G
@@ -566,12 +605,12 @@ tab_ndvi, tab_ndmi, tab_ndbi = st.tabs(["🌳 Índice NDVI (Salud Vegetal)", "�
 
 with tab_ndvi:
     st.markdown("""
-    #### **NDVI (Normalized Difference Vegetation Index)**
-    El NDVI es el estándar global para cuantificar el vigor y la densidad de la vegetación. Utiliza la diferencia entre la luz infrarroja cercana (que la vegetación sana refleja fuertemente) y la luz roja (que la clorofila absorbe para la fotosíntesis).
-    
-    **Fórmula Matemática:** `(NIR - RED) / (NIR + RED)`
-    
-    **Escala de Valores y Diagnóstico:**
+#### **NDVI (Normalized Difference Vegetation Index)**
+El NDVI es el estándar global para cuantificar el vigor y la densidad de la vegetación. Utiliza la diferencia entre la luz infrarroja cercana (que la vegetación sana refleja fuertemente) y la luz roja (que la clorofila absorbe para la fotosíntesis).
+
+**Fórmula Matemática:** `(NIR - RED) / (NIR + RED)`
+
+**Escala de Valores y Diagnóstico:**
 - 🔲 **-1.0 a 0.0:** Cuerpos de agua, nieve o estructuras urbanas densas (cemento/asfalto).
 - 🟫 **0.0 a 0.2:** Suelo desnudo, tierra seca, rocas o arena.
 - 🟨 **0.2 a 0.4:** Vegetación rala, pasto muy seco, arbustos o árboles en estado de latencia/estrés severo.
@@ -582,13 +621,13 @@ with tab_ndvi:
 
 with tab_ndmi:
     st.markdown("""
-    #### **NDMI (Normalized Difference Moisture Index)**
-    El NDMI es altamente sensible al contenido de agua líquida en las hojas y el dosel arbóreo. Es el índice más confiable para la detección temprana de sequías y la programación de riego inteligente, ya que penetra más allá de la simple "coloración verde" (NDVI).
-    
-    **Fórmula Matemática:** `(NIR - SWIR) / (NIR + SWIR)`
-    *(El sensor SWIR o Infrarrojo de Onda Corta es altamente absorbido por el agua).*
-    
-    **Escala de Valores y Diagnóstico:**
+#### **NDMI (Normalized Difference Moisture Index)**
+El NDMI es altamente sensible al contenido de agua líquida en las hojas y el dosel arbóreo. Es el índice más confiable para la detección temprana de sequías y la programación de riego inteligente, ya que penetra más allá de la simple "coloración verde" (NDVI).
+
+**Fórmula Matemática:** `(NIR - SWIR) / (NIR + SWIR)`
+*(El sensor SWIR o Infrarrojo de Onda Corta es altamente absorbido por el agua).*
+
+**Escala de Valores y Diagnóstico:**
 - 🟥 **-1.0 a -0.2:** Déficit hídrico crítico. Ausencia total de humedad foliar o suelo desnudo extremo.
 - 🟧 **-0.2 a 0.0:** Estrés hídrico alto. La planta está perdiendo agua rápidamente. **(Requiere riego de emergencia)**.
 - 🟨 **0.0 a 0.2:** Estrés hídrico moderado a leve. Riego de mantenimiento sugerido.
@@ -598,12 +637,12 @@ with tab_ndmi:
 
 with tab_ndbi:
     st.markdown("""
-    #### **NDBI (Normalized Difference Built-up Index)**
-    Diseñado para mapear áreas urbanas y superficies impermeables. Es fundamental para detectar **Islas de Calor Urbano**, ya que el asfalto y el concreto retienen una cantidad masiva de radiación térmica, afectando a los árboles circundantes.
-    
-    **Fórmula Matemática:** `(SWIR - NIR) / (SWIR + NIR)`
-    
-    **Escala de Valores y Diagnóstico:**
+#### **NDBI (Normalized Difference Built-up Index)**
+Diseñado para mapear áreas urbanas y superficies impermeables. Es fundamental para detectar **Islas de Calor Urbano**, ya que el asfalto y el concreto retienen una cantidad masiva de radiación térmica, afectando a los árboles circundantes.
+
+**Fórmula Matemática:** `(SWIR - NIR) / (SWIR + NIR)`
+
+**Escala de Valores y Diagnóstico:**
 - 🟦 **-1.0 a -0.2:** Cuerpos de agua profundos.
 - 🟩 **-0.2 a 0.0:** Cobertura vegetal densa. Actúa como regulador térmico (enfriamiento natural).
 - 🟨 **0.0 a 0.2:** Zonas mixtas. Combinación de suelo, pasto y estructuras pequeñas (ej. senderos de parque).
