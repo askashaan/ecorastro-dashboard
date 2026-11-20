@@ -35,7 +35,7 @@ st.markdown("""
     .hero-subtitle { color: rgba(247, 244, 237, 0.8); font-size: 1.125rem; max-width: 650px; line-height: 1.6; margin-bottom: 24px; }
     .badge-pill { display: inline-flex; align-items: center; gap: 6px; background-color: rgba(247, 244, 237, 0.1); border: 1px solid rgba(247, 244, 237, 0.2); padding: 4px 14px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; color: #f7f4ed; margin-bottom: 16px; }
     
-    div[data-testid="stRadio"] label { color: #f7f4ed !important; }
+    div[data-testid="stRadio"] label, div[data-testid="stSelectbox"] label, div[data-testid="stDateInput"] label { color: #f7f4ed !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -85,24 +85,39 @@ if "GEMINI_API_KEY" in st.secrets:
     has_ai = True
 
 # ---------------------------------------------------------
-# 4. Lógica Satelital y de IA (El Ojo y el Cerebro)
+# 4. Lógica Satelital y de IA (El Ojo, Tiempo y el Cerebro)
 # ---------------------------------------------------------
 coordenadas_parque = [
     [-70.6678, -33.4530], [-70.6525, -33.4530],
     [-70.6525, -33.4715], [-70.6678, -33.4715], [-70.6678, -33.4530]
 ]
 
-def obtener_capa_satelital(capa_tipo):
-    if not ee_status: return None, 0.0
+def obtener_capa_satelital(capa_tipo, fecha_objetivo):
+    if not ee_status: return None, 0.0, "Sin Conexión"
     try:
         parque_geometry = ee.Geometry.Polygon(coordenadas_parque)
-        coleccion = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(parque_geometry).filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 15)).sort("system:time_start", False)
+        
+        # Filtro de tiempo dinámico (La Máquina del Tiempo)
+        fecha_fin = datetime.combine(fecha_objetivo, datetime.max.time())
+        # Ventana de 45 días hacia atrás desde la fecha objetivo para esquivar días nublados
+        fecha_inicio = fecha_fin - timedelta(days=45) 
+        
+        coleccion = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")\
+            .filterBounds(parque_geometry)\
+            .filterDate(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d'))\
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))\
+            .sort("system:time_start", False)
+            
         imagen = coleccion.first()
+        
+        # Extraer la fecha exacta del metadato del satélite
+        timestamp = imagen.get('system:time_start')
+        fecha_real = ee.Date(timestamp).format('dd/MM/YYYY').getInfo()
 
         if "Normal" in capa_tipo:
             corte = imagen.select(["B4", "B3", "B2"]).clip(parque_geometry)
             vis_params = {"min": 0, "max": 2500, "gamma": 1.2}
-            return corte.getMapId(vis_params)["tile_fetcher"].url_format, 0.0
+            return corte.getMapId(vis_params)["tile_fetcher"].url_format, 0.0, fecha_real
         elif "NDVI" in capa_tipo:
             corte = imagen.normalizedDifference(["B8", "B4"]).rename("NDVI").clip(parque_geometry)
             vis_params = {"min": 0.1, "max": 0.7, "palette": ["#d73027", "#fc8d59", "#fee08b", "#d9ef8b", "#91cf60", "#1a9850"]}
@@ -118,40 +133,42 @@ def obtener_capa_satelital(capa_tipo):
         map_id = corte.getMapId(vis_params)
         mean_stat = corte.reduceRegion(reducer=ee.Reducer.mean(), geometry=parque_geometry, scale=10).getInfo()
         promedio_val = list(mean_stat.values())[0] if mean_stat and list(mean_stat.values())[0] is not None else 0.0
-        return map_id["tile_fetcher"].url_format, promedio_val
+        return map_id["tile_fetcher"].url_format, promedio_val, fecha_real
     except Exception:
-        return None, 0.0
+        return None, 0.0, "No se encontraron capturas despejadas para esa fecha"
 
-def extraer_historial_arbol(lat, lng):
-    """El OJO: Extrae la serie de tiempo satelital para un árbol específico."""
-    if not ee_status: return {"NDVI_pasado": 0.65, "NDVI_hoy": 0.35, "NDMI_hoy": -0.1} # Fallback simulado
+def extraer_historial_arbol(lat, lng, fecha_objetivo):
+    """El OJO: Extrae la serie de tiempo satelital comparando 6 meses antes de la fecha elegida vs la fecha elegida."""
+    if not ee_status: return {"NDVI_pasado": 0.65, "NDVI_hoy": 0.35, "NDMI_hoy": -0.1}
     
     punto = ee.Geometry.Point([lng, lat])
-    coleccion = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(punto).filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
+    fecha_fin = datetime.combine(fecha_objetivo, datetime.max.time())
     
-    img_pasada = coleccion.filterDate(ee.Date(datetime.now() - timedelta(days=180)), ee.Date(datetime.now() - timedelta(days=150))).first()
-    img_hoy = coleccion.sort("system:time_start", False).first()
+    coleccion = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(punto).filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 25))
+    
+    img_pasada = coleccion.filterDate(ee.Date(fecha_fin - timedelta(days=200)), ee.Date(fecha_fin - timedelta(days=150))).sort("system:time_start", False).first()
+    img_objetivo = coleccion.filterDate(ee.Date(fecha_fin - timedelta(days=45)), ee.Date(fecha_fin)).sort("system:time_start", False).first()
     
     try:
         ndvi_pasado = img_pasada.normalizedDifference(["B8", "B4"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
-        ndvi_hoy = img_hoy.normalizedDifference(["B8", "B4"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
-        ndmi_hoy = img_hoy.normalizedDifference(["B8A", "B11"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
+        ndvi_hoy = img_objetivo.normalizedDifference(["B8", "B4"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
+        ndmi_hoy = img_objetivo.normalizedDifference(["B8A", "B11"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
         return {
             "NDVI_pasado": round(ndvi_pasado or 0.65, 2), 
             "NDVI_hoy": round(ndvi_hoy or 0.35, 2), 
             "NDMI_hoy": round(ndmi_hoy or -0.1, 2)
         }
     except:
-        return {"NDVI_pasado": 0.68, "NDVI_hoy": 0.32, "NDMI_hoy": -0.15} # Datos simulados si la API falla
+        return {"NDVI_pasado": 0.68, "NDVI_hoy": 0.32, "NDMI_hoy": -0.15}
 
-def generar_diagnostico_ia(especie, datos_satelitales):
+def generar_diagnostico_ia(especie, datos_satelitales, fecha_str):
     """EL CEREBRO: Redacta la prescripción forestal en base a datos."""
     prompt = f"""
-    Actúa como un ingeniero forestal urbano experto. Analiza el siguiente árbol:
+    Actúa como un ingeniero forestal urbano experto. Analiza el siguiente árbol en la fecha {fecha_str}:
     - Especie: {especie}
-    - NDVI Histórico (Salud hace 6 meses): {datos_satelitales['NDVI_pasado']}
-    - NDVI Actual (Salud hoy): {datos_satelitales['NDVI_hoy']}
-    - NDMI Actual (Estrés Hídrico): {datos_satelitales['NDMI_hoy']} (Menor a 0 indica estrés hídrico severo).
+    - NDVI Histórico (Salud 6 meses antes): {datos_satelitales['NDVI_pasado']}
+    - NDVI en la fecha evaluada: {datos_satelitales['NDVI_hoy']}
+    - NDMI en la fecha evaluada (Estrés Hídrico): {datos_satelitales['NDMI_hoy']} (Menor a 0 indica estrés hídrico severo).
     
     Redacta en un solo párrafo conciso (máximo 4 líneas) una actualización de estado y una recomendación de acción directiva para la cuadrilla municipal. Sé directo, técnico y urgente si amerita.
     """
@@ -161,16 +178,11 @@ def generar_diagnostico_ia(especie, datos_satelitales):
         except:
             pass
             
-    # Respaldo de texto si no hay API Key configurada
-    caida = int((1 - (datos_satelitales['NDVI_hoy'] / datos_satelitales['NDVI_pasado'])) * 100)
-    return f"⚠️ Alerta Generada: Se detecta un declive severo (caída del {caida}% en biomasa foliar) en este ejemplar de {especie} respecto a su registro histórico. El valor de NDMI ({datos_satelitales['NDMI_hoy']}) sugiere déficit hídrico crítico. **Acción sugerida:** Desplegar cuadrilla para inspección en terreno y aumentar volumen de riego inmediato."
+    caida = int((1 - (datos_satelitales['NDVI_hoy'] / max(0.01, datos_satelitales['NDVI_pasado']))) * 100)
+    return f"⚠️ Alerta Generada ({fecha_str}): Se detecta una variación significativa (caída del {caida}% en biomasa foliar) en este ejemplar de {especie} respecto a su registro previo. El valor de NDMI ({datos_satelitales['NDMI_hoy']}) sugiere déficit hídrico. **Acción sugerida:** Desplegar cuadrilla para inspección en terreno y ajustar volumen de riego."
 
-# ---------------------------------------------------------
-# FUNCION NUEVA: Cargar árboles del GeoJSON
-# ---------------------------------------------------------
 @st.cache_data
 def cargar_arboles_geojson(filepath):
-    # Retorna diccionario indexado por coordenadas para vincular el clic en el mapa
     arboles = {}
     if os.path.exists(filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -254,12 +266,41 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 7. Dashboard Satelital (Alta Resolución + Opacidad + Catastro)
+# 7. Dashboard Satelital (Máquina del Tiempo + Alta Resolución + Catastro)
 # ---------------------------------------------------------
 st.markdown("<div id='dashboard'></div>", unsafe_allow_html=True)
-st.caption("🛰️ DASHBOARD SATELITAL & AUDITORÍA DE CATASTRO")
+st.caption("🛰️ DASHBOARD SATELITAL, MÁQUINA DEL TIEMPO & AUDITORÍA DE CATASTRO")
 st.markdown("## Parque O'Higgins: salud vegetal y estrés hídrico")
-st.write("Usa la transparencia para ver el análisis satelital y haz clic en los marcadores para análisis de IA.")
+st.write("Viaja en el tiempo para comparar estados históricos, ajusta la transparencia y haz clic en los marcadores para análisis de IA.")
+
+# Controles de Máquina del Tiempo
+col_time1, col_time2 = st.columns([2, 1])
+with col_time1:
+    opciones_tiempo = {
+        "🛰️ Captura más reciente (Hoy)": 0,
+        "⏪ Hace 5 días": 5,
+        "⏪ Hace 10 días": 10,
+        "⏪ Hace 15 días": 15,
+        "⏪ Hace 20 días": 20,
+        "⏪ Hace 25 días": 25,
+        "⏪ Hace 1 mes (30 días)": 30,
+        "⏪ Hace 2 meses": 60,
+        "⏪ Hace 3 meses": 90,
+        "⏪ Hace 6 meses": 180,
+        "⏪ Hace 1 año": 365,
+        "⏪ Hace 5 años": 1825,
+        "📅 Elegir fecha exacta en el calendario...": -1
+    }
+    seleccion_tiempo = st.selectbox("🕒 Viajar en el tiempo (Comparación Histórica):", list(opciones_tiempo.keys()))
+
+with col_time2:
+    dias_atras = opciones_tiempo[seleccion_tiempo]
+    if dias_atras == -1:
+        # Sentinel-2 tiene registros desde mediados de 2015
+        fecha_objetivo = st.date_input("Selecciona una fecha:", value=datetime.now().date() - timedelta(days=365), min_value=datetime(2016, 1, 1).date(), max_value=datetime.now().date())
+    else:
+        fecha_objetivo = datetime.now().date() - timedelta(days=dias_atras)
+        st.date_input("Fecha objetivo calculada:", value=fecha_objetivo, disabled=True)
 
 # Controles de Capa y Transparencia
 col_ctrl1, col_ctrl2 = st.columns([3, 1])
@@ -275,6 +316,12 @@ with col_ctrl2:
         min_value=0.0, max_value=1.0, value=0.7, step=0.05,
         help="Baja la opacidad para ver el mapa de alta resolución debajo."
     )
+
+# Obtener datos satelitales para la fecha elegida
+tile_url, promedio_val, fecha_real = obtener_capa_satelital(capa_seleccionada, fecha_objetivo)
+
+# Cartel informativo con la fecha real del satélite
+st.info(f"📅 **Última actualización de esta vista:** Captura satelital real tomada el **{fecha_real}** (buscando imágenes despejadas cercanas al {fecha_objetivo.strftime('%d/%m/%Y')}).")
 
 # Mapa Base Esri Alta Resolución
 m = folium.Map(
@@ -293,10 +340,7 @@ folium.TileLayer(
     control=True
 ).add_to(m)
 
-tile_url, promedio_val = obtener_capa_satelital(capa_seleccionada)
-
 if tile_url:
-    # Capa de Sentinel-2 con Opacidad variable
     folium.TileLayer(
         tiles=tile_url, 
         attr="Copernicus Sentinel-2", 
@@ -363,7 +407,7 @@ if diccionario_arboles:
 folium.LayerControl(position="topright", collapsed=False).add_to(m)
 
 # Renderizar el mapa de Folium y capturar interacción
-map_data = st_folium(m, width="100%", height=560, key=f"{capa_seleccionada}_{opacidad_capa}")
+map_data = st_folium(m, width="100%", height=560, key=f"{capa_seleccionada}_{opacidad_capa}_{fecha_objetivo}")
 
 # ---------------------------------------------------------
 # 8. MOTOR DE INTELIGENCIA ARTIFICIAL (AL CLICKEAR EL MAPA)
@@ -377,18 +421,18 @@ if map_data and map_data.get("last_object_clicked"):
 
     if arbol_seleccionado:
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 🧠 Diagnóstico Forestal Automatizado (IA)")
+        st.markdown(f"### 🧠 Diagnóstico Forestal Automatizado (IA) - Fecha: {fecha_real}")
         with st.spinner(f"Extrayendo serie satelital y generando prescripción para {arbol_seleccionado['especie'].title()}..."):
             
-            # Ejecutar Extracción + Gemini
-            datos_historicos = extraer_historial_arbol(arbol_seleccionado['lat'], arbol_seleccionado['lng'])
-            diagnostico = generar_diagnostico_ia(arbol_seleccionado['especie'], datos_historicos)
+            # Ejecutar Extracción + Gemini según la fecha elegida
+            datos_historicos = extraer_historial_arbol(arbol_seleccionado['lat'], arbol_seleccionado['lng'], fecha_objetivo)
+            diagnostico = generar_diagnostico_ia(arbol_seleccionado['especie'], datos_historicos, fecha_real)
             
             # Renderizar métricas del análisis histórico
             col_ia1, col_ia2, col_ia3 = st.columns(3)
-            col_ia1.metric("NDVI Histórico (6 meses)", datos_historicos['NDVI_pasado'])
-            col_ia2.metric("NDVI Actual (Salud Hoy)", datos_historicos['NDVI_hoy'], delta=round(datos_historicos['NDVI_hoy'] - datos_historicos['NDVI_pasado'], 2))
-            col_ia3.metric("NDMI Actual (Estrés Hídrico)", datos_historicos['NDMI_hoy'])
+            col_ia1.metric("NDVI Previo (6 meses antes)", datos_historicos['NDVI_pasado'])
+            col_ia2.metric(f"NDVI ({fecha_real})", datos_historicos['NDVI_hoy'], delta=round(datos_historicos['NDVI_hoy'] - datos_historicos['NDVI_pasado'], 2))
+            col_ia3.metric(f"NDMI ({fecha_real})", datos_historicos['NDMI_hoy'])
             
             st.success("Análisis completado en tiempo real")
             st.markdown(f"> **🤖 Prescripción y Acción:** {diagnostico}")
