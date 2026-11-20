@@ -193,23 +193,28 @@ def generar_tiling_y_metricas(lat, lng, fecha_objetivo):
 
 def generar_diagnostico_hibrido(especie, etapa, arbol_id, datos_satelitales, fecha_str, img_actual=None):
     """
-    PASO 4 DEL PIPELINE: Cruza datos y especie estricta, sin alucinar Jubaea chilensis.
+    PASO 4 DEL PIPELINE: Cruza datos y especie estricta, calculando riego de forma proporcional.
     """
     prompt = f"""
-    Actúa como un ingeniero forestal urbano experto. En la imagen de alta resolución (cuadrante 100x100m) hay un ejemplar marcado en rojo:
-    - ID Catastro: #{arbol_id}
-    - ESPECIE ESTRICTA: {especie} (Etapa: {etapa}). IMPORTANTE: Basa tu respuesta en esta especie exacta, NO asumas ni inventes que es una "Jubaea chilensis" u otra palma si no se indica aquí.
-    - Fecha evaluada: {fecha_str}
+    Actúa como un ingeniero forestal urbano experto. En la imagen de alta resolución hay un ejemplar marcado en rojo:
+- ID Catastro: #{arbol_id}
+- ESPECIE ESTRICTA: {especie} (Etapa: {etapa}). Basa tu respuesta en esta especie exacta.
+- Fecha evaluada: {fecha_str}
     
     Datos científicos calculados por satélite (Sentinel-2):
-    - NDVI Previo ({datos_satelitales['fecha_previa']}): {datos_satelitales['NDVI_pasado']}
-    - NDVI Evaluado ({fecha_str}): {datos_satelitales['NDVI_hoy']}
-    - NDMI Evaluado (Estrés Hídrico): {datos_satelitales['NDMI_hoy']} (Valores < 0 indican déficit hídrico).
+- NDVI Previo ({datos_satelitales['fecha_previa']}): {datos_satelitales['NDVI_pasado']}
+- NDVI Evaluado ({fecha_str}): {datos_satelitales['NDVI_hoy']}
+- NDMI Evaluado (Estrés Hídrico): {datos_satelitales['NDMI_hoy']}
     
     Instrucciones:
-    1. Redacta un diagnóstico técnico breve (máximo 4 líneas) indicando si hay signos de decoloración o estrés hídrico.
-    2. Calcula y sugiere explícitamente **cuántos litros de agua por semana** requiere este ejemplar/cuadrante según su especie y déficit actual.
+1. Redacta un diagnóstico técnico breve (máximo 4 líneas) analizando la evolución del NDVI y el nivel actual de NDMI.
+2. Calcula los litros de agua semanales requeridos usando esta regla proporcional estricta:
+   - ESTADO ÓPTIMO: Si el NDVI es >= 0.6 (o muestra clara mejora) y el NDMI es >= 0.2, el árbol está sano. La prescripción DEBE SER **0 Litros semanales**.
+   - ESTRÉS LEVE / MANTENCIÓN: Si el NDMI está entre 0.0 y 0.19, prescribir riego ligero (ej. 10 a 25 Litros).
+   - ESTRÉS MODERADO / CRÍTICO: Si el NDMI es negativo (< 0.0), el déficit es claro. Aumentar proporcionalmente entre 40 y 100 Litros (mientras más negativo el NDMI y mayor la caída de NDVI, más agua).
+3. Finaliza siempre indicando la cantidad en negrita (ej: **0 litros semanales**, **15 litros semanales**, etc.).
     """
+    
     if has_ai:
         try:
             if img_actual is not None:
@@ -219,9 +224,29 @@ def generar_diagnostico_hibrido(especie, etapa, arbol_id, datos_satelitales, fec
         except Exception:
             pass
             
-    caida = int((1 - (datos_satelitales['NDVI_hoy'] / max(0.01, datos_satelitales['NDVI_pasado']))) * 100)
-    litros_sugeridos = 80 if datos_satelitales['NDMI_hoy'] < 0 else 40
-    return f"⚠️ Alerta Híbrida (ID #{arbol_id} - {especie}): Se detecta una variación del {caida}% en vigor foliar respecto a {datos_satelitales['fecha_previa']}. El índice NDMI ({datos_satelitales['NDMI_hoy']}) confirma estrés hídrico moderado-alto. **Prescripción operativa:** Aplicar **{litros_sugeridos} litros de agua semanales**."
+    # Lógica matemática de respaldo (Fallback si falla Gemini)
+    ndvi = datos_satelitales['NDVI_hoy']
+    ndmi = datos_satelitales['NDMI_hoy']
+    ndvi_prev = datos_satelitales['NDVI_pasado']
+    
+    variacion_ndvi = ndvi - ndvi_prev
+    
+    if ndvi >= 0.55 and ndmi >= 0.15:
+        litros_sugeridos = 0
+        accion = "Estado óptimo. No requiere riego adicional."
+    elif ndmi >= 0.0:
+        litros_sugeridos = 20
+        accion = "Estrés hídrico leve. Riego de mantenimiento sugerido."
+    elif ndmi >= -0.1:
+        litros_sugeridos = 50
+        accion = "Estrés hídrico moderado. Déficit confirmado."
+    else:
+        litros_sugeridos = 90
+        accion = "Estrés hídrico crítico. Riego de emergencia requerido."
+        
+    tendencia = "mejora" if variacion_ndvi >= 0 else "caída"
+    
+    return f"⚠️ Análisis Híbrido (ID #{arbol_id} - {especie}): Se detecta una {tendencia} de {abs(round(variacion_ndvi, 2))} en el vigor (NDVI) respecto a {datos_satelitales['fecha_previa']}. El índice NDMI ({ndmi}) indica: {accion}. **Prescripción operativa:** Aplicar **{litros_sugeridos} litros de agua semanales**."
 
 @st.cache_data
 def cargar_arboles_geojson(filepath):
