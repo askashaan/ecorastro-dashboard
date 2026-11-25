@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 from datetime import datetime, timedelta
 import google.generativeai as genai
 
+
 # ---------------------------------------------------------
 # 1. Configuración de Página & Tema Visual Bolt
 # ---------------------------------------------------------
@@ -97,24 +98,69 @@ coordenadas_parque = [
     [-70.6525, -33.4715], [-70.6678, -33.4715], [-70.6678, -33.4530]
 ]
 
+@st.cache_data(ttl=3600)
+def obtener_fechas_reales_satelite(dias_atras=180):
+    """Obtiene todas las fechas reales con capturas limpias de Sentinel-2 sobre el parque."""
+    if not ee_status:
+        return {"🛰️ Captura más reciente (Hoy)": datetime.now().date()}
+    try:
+        parque_geometry = ee.Geometry.Polygon(coordenadas_parque)
+        hoy = datetime.now().date()
+        inicio = hoy - timedelta(days=dias_atras)
+        fin = hoy + timedelta(days=1)
+
+        coleccion = (
+            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+            .filterBounds(parque_geometry)
+            .filterDate(inicio.strftime('%Y-%m-%d'), fin.strftime('%Y-%m-%d'))
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 35))
+            .sort("system:time_start", False)
+        )
+
+        timestamps = coleccion.aggregate_array("system:time_start").getInfo()
+        opciones = {}
+        fechas_vistas = set()
+
+        for ts in timestamps:
+            fecha_dt = datetime.utcfromtimestamp(ts / 1000.0).date()
+            if fecha_dt not in fechas_vistas:
+                fechas_vistas.add(fecha_dt)
+                diff = (hoy - fecha_dt).days
+                if diff == 0:
+                    texto_hace = "Hoy"
+                elif diff == 1:
+                    texto_hace = "Hace 1 día"
+                else:
+                    texto_hace = f"Hace {diff} días"
+
+                icono = "🛰️" if len(opciones) == 0 else "⏪"
+                etiqueta = f"{icono} {fecha_dt.strftime('%d/%m/%Y')} ({texto_hace})"
+                opciones[etiqueta] = fecha_dt
+
+        if not opciones:
+            opciones["🛰️ Captura más reciente (Hoy)"] = hoy
+        return opciones
+    except Exception:
+        return {"🛰️ Captura más reciente (Hoy)": datetime.now().date()}
+
 def obtener_capa_satelital(capa_tipo, fecha_objetivo):
     if not ee_status: return None, 0.0, "Sin Conexión"
     try:
         parque_geometry = ee.Geometry.Polygon(coordenadas_parque)
-        fecha_fin = datetime.combine(fecha_objetivo, datetime.max.time())
+        fecha_fin = datetime.combine(fecha_objetivo + timedelta(days=1), datetime.min.time())
         fecha_inicio = fecha_fin - timedelta(days=45) 
         
         coleccion = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")\
             .filterBounds(parque_geometry)\
             .filterDate(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d'))\
-            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))\
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 35))\
             .sort("system:time_start", False)
             
         imagen = coleccion.first()
         timestamp = imagen.get('system:time_start')
         fecha_real = ee.Date(timestamp).format('dd/MM/YYYY').getInfo()
 
-        if "Normal" in capa_tipo:
+        if "Normal" in capa_tipo or "RGB" in capa_tipo:
             corte = imagen.select(["B4", "B3", "B2"]).clip(parque_geometry)
             vis_params = {"min": 0, "max": 2500, "gamma": 1.2}
             return corte.getMapId(vis_params)["tile_fetcher"].url_format, 0.0, fecha_real
@@ -139,7 +185,7 @@ def obtener_capa_satelital(capa_tipo, fecha_objetivo):
             col_landsat = ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")\
                 .filterBounds(parque_geometry)\
                 .filterDate(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d'))\
-                .filter(ee.Filter.lt("CLOUD_COVER", 20))\
+                .filter(ee.Filter.lt("CLOUD_COVER", 35))\
                 .sort("system:time_start", False)
             
             if col_landsat.size().getInfo() > 0:
@@ -167,13 +213,13 @@ def obtener_estado_arboles(diccionario, fecha_objetivo):
     for k in dic_nuevo: dic_nuevo[k]['ndmi'] = 0.15 # Valor verde por defecto
     
     try:
-        fecha_fin = datetime.combine(fecha_objetivo, datetime.max.time())
+        fecha_fin = datetime.combine(fecha_objetivo + timedelta(days=1), datetime.min.time())
         fecha_inicio = fecha_fin - timedelta(days=45) 
         
         imagen = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")\
             .filterBounds(ee.Geometry.Polygon(coordenadas_parque))\
             .filterDate(fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d'))\
-            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))\
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 35))\
             .sort("system:time_start", False).first()
             
         ndmi = imagen.normalizedDifference(["B8A", "B11"]).rename('NDMI')
@@ -199,16 +245,16 @@ def generar_tiling_y_metricas(lat, lng, fecha_objetivo):
         return {"NDVI_pasado": 0.65, "NDVI_hoy": 0.35, "NDMI_hoy": -0.1, "fecha_previa": "Hace 5 días", "serie_temporal": []}, None
     
     punto = ee.Geometry.Point([lng, lat])
-    fecha_fin = datetime.combine(fecha_objetivo, datetime.max.time())
+    fecha_fin = datetime.combine(fecha_objetivo + timedelta(days=1), datetime.min.time())
     
-    coleccion = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(punto).filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 25))
-    img_objetivo = coleccion.filterDate(ee.Date(fecha_fin - timedelta(days=20)), ee.Date(fecha_fin)).sort("system:time_start", False).first()
+    coleccion = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(punto).filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 35))
+    img_objetivo = coleccion.filterDate(ee.Date(fecha_fin - timedelta(days=45)), ee.Date(fecha_fin)).sort("system:time_start", False).first()
     
     try:
         fecha_evaluado_ee = ee.Date(img_objetivo.get('system:time_start'))
         fecha_previa_ideal = fecha_evaluado_ee.advance(-5, 'day')
         
-        img_pasada = coleccion.filterDate(fecha_previa_ideal.advance(-3, 'day'), fecha_previa_ideal.advance(3, 'day')).sort("system:time_start", False).first()
+        img_pasada = coleccion.filterDate(fecha_previa_ideal.advance(-15, 'day'), fecha_evaluado_ee.advance(-1, 'day')).sort("system:time_start", False).first()
         
         ndvi_pasado = img_pasada.normalizedDifference(["B8", "B4"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
         ndvi_hoy = img_objetivo.normalizedDifference(["B8", "B4"]).reduceRegion(ee.Reducer.mean(), punto, 10).getInfo().get('nd')
@@ -297,6 +343,7 @@ def generar_diagnostico_hibrido(especie, etapa, arbol_id, datos_satelitales, fec
         
     tendencia = "mejora" if variacion_ndvi >= 0 else "caída"
     return f"⚠️ Análisis Híbrido (ID #{arbol_id} - {especie}): Se detecta una {tendencia} de {abs(round(variacion_ndvi, 2))} en el vigor respecto a {datos_satelitales['fecha_previa']}. El índice NDMI ({ndmi}) indica: {accion}. **Prescripción operativa:** Aplicar **{litros_sugeridos} litros de agua semanales**."
+
 @st.cache_data
 def cargar_arboles_geojson(filepath):
     arboles = {}
@@ -391,22 +438,25 @@ st.write("Viaja en el tiempo para comparar estados históricos, ajusta la transp
 
 col_time1, col_time2 = st.columns([2, 1])
 with col_time1:
-    opciones_tiempo = {
-        "🛰️ Captura más reciente (Hoy)": 0,
-        "⏪ Hace 5 días": 5, "⏪ Hace 10 días": 10, "⏪ Hace 15 días": 15,
-        "⏪ Hace 20 días": 20, "⏪ Hace 25 días": 25, "⏪ Hace 1 mes (30 días)": 30,
-        "⏪ Hace 2 meses": 60, "⏪ Hace 3 meses": 90, "⏪ Hace 6 meses": 180,
-        "⏪ Hace 1 año": 365, "📅 Elegir fecha exacta en el calendario...": -1
-    }
-    seleccion_tiempo = st.selectbox("🕒 Viajar en el tiempo (Comparación Histórica):", list(opciones_tiempo.keys()))
+    opciones_tiempo = obtener_fechas_reales_satelite(dias_atras=180).copy()
+    opciones_tiempo["📅 Elegir otra fecha en el calendario..."] = None
+    seleccion_tiempo = st.selectbox(
+        "🕒 Capturas Satelitales Reales Disponibles (Sentinel-2):",
+        list(opciones_tiempo.keys())
+    )
 
 with col_time2:
-    dias_atras = opciones_tiempo[seleccion_tiempo]
-    if dias_atras == -1:
-        fecha_objetivo = st.date_input("Selecciona una fecha:", value=datetime.now().date() - timedelta(days=365), min_value=datetime(2016, 1, 1).date(), max_value=datetime.now().date())
+    fecha_elegida = opciones_tiempo[seleccion_tiempo]
+    if fecha_elegida is None:
+        fecha_objetivo = st.date_input(
+            "Selecciona una fecha:",
+            value=datetime.now().date() - timedelta(days=365),
+            min_value=datetime(2016, 1, 1).date(),
+            max_value=datetime.now().date()
+        )
     else:
-        fecha_objetivo = datetime.now().date() - timedelta(days=dias_atras)
-        st.date_input("Fecha objetivo calculada:", value=fecha_objetivo, disabled=True)
+        fecha_objetivo = fecha_elegida
+        st.date_input("Fecha satelital seleccionada:", value=fecha_objetivo, disabled=True)
 
 col_ctrl1, col_ctrl2 = st.columns([3, 1])
 with col_ctrl1:
